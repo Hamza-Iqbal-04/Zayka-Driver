@@ -10,7 +10,7 @@ class AuthGate extends StatelessWidget {
   Future<bool> _isRider(String email) async {
     final snap =
         await FirebaseFirestore.instance
-            .collection('Riders')
+            .collection('Drivers')
             .where('email', isEqualTo: email)
             .limit(1)
             .get();
@@ -50,7 +50,7 @@ class AuthGate extends StatelessWidget {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text("No rider account found."),
+                    content: Text("No Driver account found."),
                     backgroundColor: Colors.red,
                   ),
                 );

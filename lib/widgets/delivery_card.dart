@@ -32,10 +32,31 @@ class DeliveryCard extends StatelessWidget {
     print('DeliveryCard being built for orderId: ${orderData['orderId']}');
     final theme = Theme.of(context);
     final customerName = orderData['customerName'] ?? 'Unknown';
-    // Ensure address details are handled robustly
-    final street = orderData['deliveryAddress']?['street'] as String? ?? '';
-    final city = orderData['deliveryAddress']?['city'] as String? ?? '';
-    final address = city.isNotEmpty ? '$street, $city' : street;
+
+    // Updated: Extract all address components with debug prints for verification
+    final deliveryAddress = orderData['deliveryAddress'] as Map<String, dynamic>? ?? {};
+    final flat = deliveryAddress['flat'] as String? ?? '';
+    final floor = deliveryAddress['floor'] as String? ?? '';
+    final building = deliveryAddress['building'] as String? ?? '';
+    final street = deliveryAddress['street'] as String? ?? '';
+    final city = deliveryAddress['city'] as String? ?? '';
+
+    // Debug prints to check values in console (remove after testing)
+    print('Flat: $flat');
+    print('Floor: $floor');
+    print('Building: $building');
+    print('Street: $street');
+    print('City: $city');
+
+    // Updated: Build address string in specified order with labels for flat/floor/building, skipping empty parts
+    final addressParts = <String>[];
+    if (flat.isNotEmpty) addressParts.add('Flat $flat');
+    if (floor.isNotEmpty) addressParts.add('Floor $floor');
+    if (building.isNotEmpty) addressParts.add('Building $building');
+    if (street.isNotEmpty) addressParts.add(street);
+    if (city.isNotEmpty) addressParts.add(city);
+
+    final address = addressParts.isNotEmpty ? addressParts.join(', ') : 'N/A';
 
     String displayStatus = (orderData['status'] as String?)?.replaceAll('_', ' ').capitalize() ?? 'Unknown';
 
@@ -59,7 +80,7 @@ class DeliveryCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    "Order #$orderId",
+                    "Order #${orderData['dailyOrderNumber'] ?? orderId}",
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: theme.colorScheme.onBackground),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -77,8 +98,7 @@ class DeliveryCard extends StatelessWidget {
             const Divider(height: 24),
             _buildInfoRow(Icons.person_outline, "Customer", customerName, theme),
             const SizedBox(height: 8),
-            _buildInfoRow(Icons.location_on_outlined, "Delivery To", address.isNotEmpty ? address : "N/A", theme),
-
+            _buildInfoRow(Icons.location_on_outlined, "Delivery To", address, theme),  // Updated: Use the new address string
             // << MODIFIED: Conditionally build the button >>
             if (actionButtonText != null && actionButtonText!.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -97,12 +117,14 @@ class DeliveryCard extends StatelessWidget {
                   child: Text(actionButtonText!, style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       ),
     );
   }
+
+
 
   Widget _buildInfoRow(IconData icon, String label, String value, ThemeData theme) {
     return Row(

@@ -2,24 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../theme/app_theme.dart'; // Make sure this path is correct
 import '../widgets/delivery_card.dart'; // Make sure this path is correct
 import '../utils/string_extensions.dart'; // Make sure this path is correct
 
 class DeliveryHistoryScreen extends StatefulWidget {
   const DeliveryHistoryScreen({super.key});
-
   @override
-  State<DeliveryHistoryScreen> createState() => _DeliveryHistoryScreenState();
+  State createState() => _DeliveryHistoryScreenState();
 }
 
 class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   String? _currentRiderIdentifier;
   String? _errorMessage;
-
   String selectedStatus = 'All'; // Default to 'All'
   String searchQuery = '';
   DateTimeRange? selectedRange;
@@ -32,7 +30,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
   bool _hasMore = true; // True if there are more documents in Firestore beyond _lastDocument
   bool _isFetchingMore = false; // To prevent multiple simultaneous pagination fetches
   bool _isLoadingInitial = true; // For initial full-screen loading
-  final int _pageSize = 10; // Number of documents to fetch per page from Firestore
+  final int _pageSize = 3; // Fetch and show 3 orders at a time
 
   @override
   void initState() {
@@ -62,7 +60,6 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
       setState(() {
         _currentRiderIdentifier = currentUser.email;
       });
-      print('Delivery History Screen: Logged in rider identifier: $_currentRiderIdentifier'); // ADDED PRINT
       // After getting rider ID, fetch initial data
       _fetchDeliveries(isInitialLoad: true);
     } else {
@@ -70,7 +67,6 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
         _isLoadingInitial = false;
         // Optionally show an error or redirect if rider not logged in
       });
-      print('Delivery History Screen: No rider logged in. _isLoadingInitial set to false.'); // ADDED PRINT
     }
   }
 
@@ -132,7 +128,6 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     final Timestamp? deliveredTimestamp = orderData['timestamps']?['delivered'] as Timestamp?;
     final Timestamp? cancelledTimestamp = orderData['timestamps']?['cancelledAt'] as Timestamp?;
     final Timestamp? placedTimestamp = orderData['timestamps']?['placed'] as Timestamp?;
-
     final String currentStatus = orderData['status']?.toLowerCase() ?? 'unknown';
 
     if (currentStatus == 'delivered' && deliveredTimestamp != null) {
@@ -183,18 +178,14 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
         query = query.where('status', isEqualTo: 'delivered');
       } else if (selectedStatus == 'Cancelled') {
         query = query.where('status', isEqualTo: 'cancelled');
-      } else { // 'All' - by default shows delivered and cancelled for history
+      } else {
         query = query.where('status', whereIn: ['delivered', 'cancelled']);
       }
 
       // --- Server-side DATE filter (on 'timestamps.placed') ---
-      // This is a broad filter to limit documents from Firestore.
-      // More precise filtering by 'event date' happens client-side.
       if (selectedRange != null) {
         final serverQueryStart = selectedRange!.start;
-        // Adjust end for server query to include the whole day
         final serverQueryEnd = DateTime(selectedRange!.end.year, selectedRange!.end.month, selectedRange!.end.day, 23, 59, 59);
-
         query = query
             .where('timestamps.delivered', isGreaterThanOrEqualTo: Timestamp.fromDate(serverQueryStart))
             .where('timestamps.delivered', isLessThanOrEqualTo: Timestamp.fromDate(serverQueryEnd));
@@ -207,34 +198,21 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
       if (!isInitialLoad && _lastDocument != null) {
         query = query.startAfterDocument(_lastDocument!);
       }
+
       query = query.limit(_pageSize);
-
       final QuerySnapshot snapshot = await query.get();
-
-      print('--- Firestore Fetch Results ---'); // ADDED PRINT
-      print('Fetched ${snapshot.docs.length} raw documents from Firestore for current query.'); // ADDED PRINT
-      if (snapshot.docs.isNotEmpty) { // ADDED PRINT
-        print('First fetched document raw data: ${snapshot.docs.first.data()}'); // ADDED PRINT
-        print('Last fetched document ID: ${snapshot.docs.last.id}'); // ADDED PRINT
-      } else { // ADDED PRINT
-        print('No documents returned by the Firestore query.'); // ADDED PRINT
-      }
-      print('Has more pages? $_hasMore'); // ADDED PRINT
-      print('-------------------------------'); // ADDED PRINT
-
 
       final newRawDeliveries = snapshot.docs.map((doc) => {
         ...doc.data() as Map<String, dynamic>,
-        'docId': doc.id, // Add Firestore document ID to the map
+        'docId': doc.id,
       }).toList();
-
 
       if (snapshot.docs.isEmpty) {
         _hasMore = false;
         _lastDocument = null;
       } else {
         _lastDocument = snapshot.docs.last;
-        _hasMore = snapshot.docs.length == _pageSize; // If fewer than page size, no more pages
+        _hasMore = snapshot.docs.length == _pageSize;
       }
 
       setState(() {
@@ -245,9 +223,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
         }
         _applyClientSideFiltersAndProcess(); // Apply client-side filters and prepare for display
       });
-
     } catch (e) {
-      print("Error fetching deliveries: $e");
       setState(() {
         _errorMessage = "Failed to load deliveries: $e";
       });
@@ -261,20 +237,15 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
 
   // Applies client-side filters (search, precise date range) and sorts data
   void _applyClientSideFiltersAndProcess() {
-    print('--- Client-Side Filtering Status ---'); // ADDED PRINT
-    print('Total raw deliveries passed to client filter: ${_allRawDeliveries.length}'); // ADDED PRINT
-
     List<Map<String, dynamic>> tempFiltered = List.from(_allRawDeliveries);
 
     // --- CLIENT-SIDE DATE RANGE FILTERING (applied to the event date) ---
     if (selectedRange != null) {
       final rangeStart = DateTime(selectedRange!.start.year, selectedRange!.start.month, selectedRange!.start.day);
       final rangeEnd = DateTime(selectedRange!.end.year, selectedRange!.end.month, selectedRange!.end.day, 23, 59, 59);
-
       tempFiltered = tempFiltered.where((orderData) {
         final DateTime? eventDate = _getRelevantDateTime(orderData);
         if (eventDate == null) return false;
-
         final normalizedEventDate = DateTime(eventDate.year, eventDate.month, eventDate.day);
         return !normalizedEventDate.isBefore(rangeStart) && normalizedEventDate.isBefore(rangeEnd.add(const Duration(days: 1)));
       }).toList();
@@ -285,9 +256,9 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
       final searchLower = searchQuery.toLowerCase();
       tempFiltered = tempFiltered.where((orderData) {
         final name = orderData['customerName']?.toLowerCase() ?? '';
-        // Use 'docId' as a fallback if 'orderId' field is not present
         final orderId = (orderData['orderId'] as String?)?.toLowerCase() ?? (orderData['docId'] as String?)?.toLowerCase() ?? '';
-        return name.contains(searchLower) || orderId.contains(searchLower);
+        final dailyNumber = orderData['dailyOrderNumber']?.toString().toLowerCase() ?? '';
+        return name.contains(searchLower) || orderId.contains(searchLower) || dailyNumber.contains(searchLower);
       }).toList();
     }
 
@@ -304,10 +275,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     setState(() {
       _filteredAndProcessedDeliveries = tempFiltered;
     });
-    print('Deliveries after client-side filtering: ${_filteredAndProcessedDeliveries.length}'); // ADDED PRINT
-    print('------------------------------------'); // ADDED PRINT
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -372,10 +340,11 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                         ? "Date Range"
                         : "${DateFormat.yMMMd().format(selectedRange!.start)} - ${DateFormat.yMMMd().format(selectedRange!.end)}"),
                     style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -450,7 +419,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                             ),
                           ),
                           DeliveryCard(
-                            orderId: orderData['orderId'] ?? orderData['docId'] ?? 'ID N/A', // MODIFIED: Fallback to docId
+                            orderId: orderData['dailyOrderNumber']?.toString() ?? 'N/A', // Updated: Display dailyOrderNumber (converted to string)
                             orderData: {
                               'customerName': orderData['customerName'] ?? 'Unknown Customer',
                               'deliveryAddress': orderData['deliveryAddress'],
@@ -483,3 +452,4 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     );
   }
 }
+

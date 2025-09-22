@@ -1,18 +1,45 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/earnings_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/delivery_history_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'widgets/models/auth_gate.dart';
+import 'package:geolocator_android/geolocator_android.dart';
+import 'package:geolocator_apple/geolocator_apple.dart';
+
+void _registerPlatformLocationServices() {
+  if (Platform.isAndroid) {
+    GeolocatorAndroid.registerWith();
+  } else if (Platform.isIOS) {
+    GeolocatorApple.registerWith();
+  }
+}
 
 void main() async {
+  _registerPlatformLocationServices();
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') {
+      rethrow; // Only rethrow if it's a different error
+    }
+    // else: ignore the duplicate-app error safely
+  }
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),

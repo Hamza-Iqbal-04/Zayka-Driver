@@ -23,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<bool> _riderExists(String email) async {
     final snapshot =
         await FirebaseFirestore.instance
-            .collection('Riders')
+            .collection('Drivers')
             .where('email', isEqualTo: email)
             .limit(1)
             .get();
@@ -57,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final exists = await _riderExists(credential.user!.email!);
       if (!exists) {
         setState(() {
-          _error = "No rider profile found for this email.";
+          _error = "No Driver profile found for this email.";
         });
         await FirebaseAuth.instance.signOut();
       }
@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final exists = await _riderExists(userCredential.user!.email!);
       if (!exists) {
         setState(() {
-          _error = "No rider profile found for this email.";
+          _error = "No Driver profile found for this email.";
         });
         await FirebaseAuth.instance.signOut();
       }

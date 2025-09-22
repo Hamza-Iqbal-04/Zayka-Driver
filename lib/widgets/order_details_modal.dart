@@ -12,8 +12,6 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../widgets/delivery_card.dart';
 
-
-// Main Screen
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -21,7 +19,6 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-// Add TickerProviderStateMixin if using AnimationController in showModalBottomSheet
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -66,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (currentUser != null && currentUser.email != null) {
       setState(() {
         _riderEmail = currentUser.email;
-        _riderDocRef = _firestore.collection('Riders').doc(_riderEmail);
+        _riderDocRef = _firestore.collection('Drivers').doc(_riderEmail);
       });
     }
   }
@@ -370,8 +367,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-// --- Order Details Bottom Sheet (OrderDetailsSheet) ---
-// This class is defined here as it's required by HomeScreen.
 class OrderDetailsSheet extends StatelessWidget {
   final Map<String, dynamic> orderData;
   final String orderId;
@@ -449,16 +444,33 @@ class OrderDetailsSheet extends StatelessWidget {
 
     // --- Dynamic Data Extraction from orderData ---
     final String customerName = orderData['customerName'] ?? 'N/A';
-    final String customerPhone = orderData['deliveryAddress']?['phone'] ?? 'N/A';
+    final String customerPhone = orderData['customerPhone'] ?? 'N/A';
     final String restaurantPhone = orderData['restaurantPhone'] ?? 'N/A';
     final String specialInstructions = orderData['customerNotes'] ?? 'No special instructions.';
 
     // Address construction - ONLY street, city, zipcode
-    final Map<String, dynamic> deliveryAddressMap = orderData['deliveryAddress'] ?? {};
+    // Address construction - ONLY street, city, zipcode
+    // Updated: Extract all address components
+    final Map deliveryAddressMap = orderData['deliveryAddress'] ?? {};
+    final String flat = deliveryAddressMap['flat'] ?? '';
+    final String floor = deliveryAddressMap['floor'] ?? '';
+    final String building = deliveryAddressMap['building'] ?? '';
     final String street = deliveryAddressMap['street'] ?? '';
     final String city = deliveryAddressMap['city'] ?? '';
     final String zip = (deliveryAddressMap['zipCode'] as String?) ?? '';
-    final String customerAddress = [street, city, zip].where((s) => s.isNotEmpty).join(', ');
+
+// Updated: Build address string in specified order with labels for flat/floor/building, skipping empty parts
+    final addressParts = <String>[];
+    if (flat.isNotEmpty) addressParts.add('Flat $flat');
+    if (floor.isNotEmpty) addressParts.add('Floor $floor');
+    if (building.isNotEmpty) addressParts.add('Building $building');
+    if (street.isNotEmpty) addressParts.add(street);
+    if (city.isNotEmpty) addressParts.add(city);
+    if (zip.isNotEmpty) addressParts.add(zip);
+
+    final String customerAddress = addressParts.isNotEmpty ? addressParts.join(', ') : 'N/A';
+
+
 
     // Order Items from 'items' List
     final List<dynamic> orderItems = orderData['items'] ?? [];
@@ -542,7 +554,7 @@ class OrderDetailsSheet extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("Order #$orderId", style: theme.textTheme.headlineSmall),
+                  Text("Order #${orderData['dailyOrderNumber'] ?? orderId}", style: theme.textTheme.headlineSmall),
                   Text(
                     DateFormat.jm().format(displayTime), // Display order placed time
                     style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),

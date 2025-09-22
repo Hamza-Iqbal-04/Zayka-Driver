@@ -66,7 +66,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final snapshot = await _firestore
-          .collection('Riders')
+          .collection('Drivers')
           .where('email', isEqualTo: email)
           .limit(1)
           .get();
@@ -76,7 +76,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _currentRiderDocumentId = snapshot.docs.first.id;
         _currentRiderData = snapshot.docs.first.data();
         _nameController.text = _currentRiderData?['name'] ?? '';
-        _phoneController.text = _currentRiderData?['phone'] ?? '';
+        // FIX: Convert phone to String explicitly
+        _phoneController.text = (_currentRiderData?['phone'] ?? '').toString();
         _currentProfileImageUrl = _currentRiderData?['profileImageUrl'];
         print("Loaded rider data: $_currentRiderData"); // ADDED PRINT
       } else {
@@ -194,9 +195,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
 
     try {
-      print("Updating Firestore document: Riders/$_currentRiderDocumentId with data: $updatedData"); // ADDED PRINT
+      print("Updating Firestore document: Drivers/$_currentRiderDocumentId with data: $updatedData"); // ADDED PRINT
       await _firestore
-          .collection('Riders')
+          .collection('Drivers')
           .doc(_currentRiderDocumentId)
           .update(updatedData);
 

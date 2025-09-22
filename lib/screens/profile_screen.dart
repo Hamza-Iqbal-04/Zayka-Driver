@@ -30,7 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (email == null) return null;
 
     final snapshot = await FirebaseFirestore.instance
-        .collection('Riders')
+        .collection('Drivers') // Collection name is correct
         .where('email', isEqualTo: email)
         .limit(1)
         .get();
@@ -56,7 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return Center(
               child: Text(
-                "Rider profile not found.",
+                "Driver profile not found.",
                 style: TextStyle(color: theme.colorScheme.onBackground),
               ),
             );
@@ -67,6 +67,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final email = data['email'] ?? "no.email@example.com";
           // Fetch the profile image URL
           final String? profileImageUrl = data['profileImageUrl'] as String?;
+
+          // Safely access nested vehicle data
+          final Map<String, dynamic>? vehicleData = data['vehicle'] as Map<String, dynamic>?;
+          final String vehicleType = vehicleData?['type'] ?? 'N/A';
+          final String vehicleNumber = vehicleData?['number'] ?? 'N/A';
+
 
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
@@ -85,25 +91,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildInfoItem(
                   icon: Icons.phone_outlined,
                   title: "Phone",
-                  value: data['phone'] ?? 'N/A',
+                  value: (data['phone'] ?? 'N/A').toString(), // Ensure phone is treated as string
                   theme: theme,
                 ),
                 _buildInfoItem(
                   icon: Icons.drive_eta_outlined,
                   title: "Vehicle",
-                  value: data['vehicleType'] ?? 'N/A',
+                  value: vehicleType, // Correctly access nested field
                   theme: theme,
                 ),
                 _buildInfoItem(
                   icon: Icons.pin_outlined,
                   title: "License Plate",
-                  value: data['vehicleNumber'] ?? 'N/A',
-                  theme: theme,
-                ),
-                _buildInfoItem(
-                  icon: Icons.delivery_dining_outlined,
-                  title: "Total Deliveries",
-                  value: (data['totalDeliveries'] ?? 0).toString(),
+                  value: vehicleNumber, // Correctly access nested field
                   theme: theme,
                 ),
               ]),
@@ -135,7 +135,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => DeliveryHistoryScreen(),
+                          builder: (_) => const DeliveryHistoryScreen(),
                         ),
                       );
                     },
@@ -176,35 +176,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Determine the child for CircleAvatar based on profileImageUrl
     Widget avatarChild;
     if (profileImageUrl != null && profileImageUrl.isNotEmpty) {
-      // Option 1: Using Image.network directly
-      avatarChild = ClipOval( // Ensure the image is clipped to an oval shape
-        child: Image.network(
-          profileImageUrl,
-          fit: BoxFit.cover,
-          width: 60, // Match CircleAvatar radius * 2
-          height: 60, // Match CircleAvatar radius * 2
-          loadingBuilder: (BuildContext context, Widget child, ImageChunkEvent? loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Center(
-              child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                    : null,
-                strokeWidth: 2,
-              ),
-            );
-          },
-          errorBuilder: (BuildContext context, Object exception, StackTrace? stackTrace) {
-            // Fallback to initials if image fails to load
-            print('Error loading profile image: $exception');
-            return _buildInitialsAvatar(name);
-          },
-        ),
-      );
-
-      // Option 2: Using CachedNetworkImage (add dependency: cached_network_image)
+      // Using CachedNetworkImage (add dependency: cached_network_image)
       // This provides caching and better loading/error states.
-      /*
       avatarChild = ClipOval(
         child: CachedNetworkImage(
           imageUrl: profileImageUrl,
@@ -214,7 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           errorWidget: (context, url, error) {
-             print('Error loading profile image with CachedNetworkImage: $error');
+            print('Error loading profile image with CachedNetworkImage: $error');
             return _buildInitialsAvatar(name); // Fallback to initials
           },
           fit: BoxFit.cover,
@@ -222,7 +195,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           height: 60,
         ),
       );
-      */
 
     } else {
       // Fallback to initials if no profileImageUrl
@@ -326,7 +298,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSectionHeader(String title, Color accentColor, ThemeData theme) {
-    // ... (rest of the code for _buildSectionHeader is the same)
     return Padding(
       padding: const EdgeInsets.only(left: 8.0, bottom: 8.0, top: 16.0),
       child: Row(
@@ -343,7 +314,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSettingsList(Color cardColor, List<Widget> children) {
-    // ... (rest of the code for _buildSettingsList is the same)
     return Container(
       decoration: BoxDecoration(
         color: cardColor,
@@ -375,7 +345,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     VoidCallback? onTap,
     bool isDestructive = false,
   }) {
-    // ... (rest of the code for _buildSettingsItem is the same)
     final color = isDestructive ? Colors.red : theme.colorScheme.onBackground;
     return ListTile(
       onTap: onTap,
@@ -400,7 +369,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String value,
     required ThemeData theme,
   }) {
-    // ... (rest of the code for _buildInfoItem is the same)
     return ListTile(
       leading: Icon(icon, color: theme.colorScheme.secondary),
       title: Text(
@@ -427,7 +395,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required Function(bool) onChanged,
     required ThemeData theme,
   }) {
-    // ... (rest of the code for _buildToggleItem is the same)
     return ListTile(
       onTap: () => onChanged(!value),
       leading: Icon(icon, color: theme.colorScheme.secondary),

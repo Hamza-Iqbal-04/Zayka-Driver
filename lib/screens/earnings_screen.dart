@@ -2,20 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
 import '../theme/app_theme.dart';
 
 class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key});
 
   @override
-  State<EarningsScreen> createState() => _EarningsScreenState();
+  State createState() => _EarningsScreenState();
 }
 
 class _EarningsScreenState extends State<EarningsScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   String? _riderEmail;
   bool _isLoading = true;
   String? _errorMessage;
@@ -29,6 +27,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
   // Weekly Performance Chart data
   List<double> _weeklyHeights = List.filled(7, 0.0);
   final List<String> _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  double _maxWeeklyEarnings = 0.0; // Declared as a class member here
 
   // Recent Transactions data for pagination
   List<Map<String, dynamic>> _recentTransactions = [];
@@ -70,7 +69,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     } else {
       setState(() {
         _isLoading = false;
-        _errorMessage = "Rider not logged in.";
+        _errorMessage = "Driver not logged in.";
       });
     }
   }
@@ -87,7 +86,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
       DateTime now = DateTime.now();
       DateTime todayStart = DateTime(now.year, now.month, now.day);
       DateTime todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
       int currentDayOfWeek = now.weekday;
       DateTime startOfWeek = todayStart.subtract(Duration(days: currentDayOfWeek - 1));
       DateTime endOfWeek = startOfWeek.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
@@ -107,7 +105,22 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
       for (var doc in deliveredOrdersSnapshot.docs) {
         final orderData = doc.data() as Map<String, dynamic>;
-        final double payment = (orderData['riderPaymentAmount'] as num?)?.toDouble() ?? 0.0;
+
+        // Updated payment extraction
+        dynamic paymentValue = orderData['riderPaymentAmount'];
+        double payment = 0.0;
+        if (paymentValue != null) {
+          if (paymentValue is num) {
+            payment = paymentValue.toDouble();
+          } else if (paymentValue is String) {
+            if (paymentValue.trim().isNotEmpty) {
+              try {
+                payment = double.parse(paymentValue.trim());
+              } catch (e) {}
+            }
+          }
+        }
+
         final Timestamp? deliveredTimestamp = orderData['timestamps']?['delivered'] as Timestamp?;
         final DateTime? deliveredDate = deliveredTimestamp?.toDate();
 
@@ -126,9 +139,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
         }
       }
 
-      double maxWeeklyEarnings = tempWeeklyHeights.reduce((a, b) => a > b ? a : b);
-      if (maxWeeklyEarnings > 0) {
-        _weeklyHeights = tempWeeklyHeights.map((e) => (e / maxWeeklyEarnings) * 90).toList();
+      // Assign to class member _maxWeeklyEarnings
+      _maxWeeklyEarnings = tempWeeklyHeights.reduce((a, b) => a > b ? a : b);
+      if (_maxWeeklyEarnings > 0) {
+        _weeklyHeights = tempWeeklyHeights.map((e) => (e / _maxWeeklyEarnings) * 90).toList();
       } else {
         _weeklyHeights = List.filled(7, 0.0);
       }
@@ -140,7 +154,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
         _weekDeliveries = tempWeekDeliveries;
       });
     } catch (e) {
-      print("Error fetching summary and weekly data: $e");
       setState(() {
         _errorMessage = "Failed to load summary data: $e";
       });
@@ -149,7 +162,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
       // For now, _fetchFirstPageTransactions will set isLoading to false finally.
     }
   }
-
 
   Future<void> _fetchFirstPageTransactions() async {
     if (_riderEmail == null) return;
@@ -179,13 +191,28 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
       _recentTransactions = firstPageSnapshot.docs.map((doc) {
         final orderData = doc.data() as Map<String, dynamic>;
-        final double payment = (orderData['riderPaymentAmount'] as num?)?.toDouble() ?? 0.0;
+
+        // Updated payment extraction
+        dynamic paymentValue = orderData['riderPaymentAmount'];
+        double payment = 0.0;
+        if (paymentValue != null) {
+          if (paymentValue is num) {
+            payment = paymentValue.toDouble();
+          } else if (paymentValue is String) {
+            if (paymentValue.trim().isNotEmpty) {
+              try {
+                payment = double.parse(paymentValue.trim());
+              } catch (e) {}
+            }
+          }
+        }
+
         final Timestamp? deliveredTimestamp = orderData['timestamps']?['delivered'] as Timestamp?;
         final DateTime? deliveredDate = deliveredTimestamp?.toDate();
 
         return {
           'time': deliveredDate,
-          'order': '#${orderData['orderId'] ?? doc.id.substring(0, 7)} • ${orderData['customerName'] ?? 'Unknown'}',
+          'order': '#${orderData['dailyOrderNumber'] ?? doc.id.substring(0, 7)}',
           'amount': '+QR ${payment.toStringAsFixed(2)}',
         };
       }).toList();
@@ -194,7 +221,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print("Error fetching first page transactions: $e");
       setState(() {
         _isLoading = false;
         _errorMessage = "Failed to load transactions: $e";
@@ -230,13 +256,28 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
         final newTransactions = nextPageSnapshot.docs.map((doc) {
           final orderData = doc.data() as Map<String, dynamic>;
-          final double payment = (orderData['riderPaymentAmount'] as num?)?.toDouble() ?? 0.0;
+
+          // Updated payment extraction
+          dynamic paymentValue = orderData['riderPaymentAmount'];
+          double payment = 0.0;
+          if (paymentValue != null) {
+            if (paymentValue is num) {
+              payment = paymentValue.toDouble();
+            } else if (paymentValue is String) {
+              if (paymentValue.trim().isNotEmpty) {
+                try {
+                  payment = double.parse(paymentValue.trim());
+                } catch (e) {}
+              }
+            }
+          }
+
           final Timestamp? deliveredTimestamp = orderData['timestamps']?['delivered'] as Timestamp?;
           final DateTime? deliveredDate = deliveredTimestamp?.toDate();
 
           return {
             'time': deliveredDate,
-            'order': '#${orderData['orderId'] ?? doc.id.substring(0, 7)} • ${orderData['customerName'] ?? 'Unknown'}',
+            'order': '#${orderData['dailyOrderNumber'] ?? doc.id.substring(0, 7)}',
             'amount': '+QR ${payment.toStringAsFixed(2)}',
           };
         }).toList();
@@ -246,7 +287,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
         });
       }
     } catch (e) {
-      print("Error fetching more transactions: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load more transactions: $e')),
       );
@@ -306,9 +346,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             ),
           ),
         ),
-
         const SizedBox(height: 16),
-
         // Weekly Performance Chart
         Card(
           elevation: 1,
@@ -330,7 +368,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                       ),
                     ),
                     Text(
-                      "Week of ${DateFormat.MMMEd().format(DateTime.now().subtract(Duration(days: DateTime.now().weekday -1)))}", // Show start of current week
+                      "Week of ${DateFormat.MMMEd().format(DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1)))}", // Show start of current week
                       style: const TextStyle(color: AppTheme.primaryColor),
                     ),
                   ],
@@ -350,6 +388,19 @@ class _EarningsScreenState extends State<EarningsScreen> {
                             color: AppTheme.primaryColor,
                             borderRadius: BorderRadius.circular(4),
                           ),
+                          child: Center(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                // Use _maxWeeklyEarnings here
+                                _weeklyHeights[index] > 0 && _maxWeeklyEarnings > 0 ? '${((_weeklyHeights[index] / 90) * _maxWeeklyEarnings).toStringAsFixed(0)}' : '', // Display actual value
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: _weeklyHeights[index] > 0 ? 10 : 0, // Hide text if height is 0
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(_days[index], style: const TextStyle(fontSize: 12)),
@@ -361,9 +412,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
             ),
           ),
         ),
-
         const SizedBox(height: 16),
-
         // Recent Transactions
         Card(
           elevation: 1,
@@ -390,7 +439,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 else
                   ..._recentTransactions.map((t) {
                     DateTime? transactionTime = t['time'] as DateTime?;
-
                     return Column(
                       children: [
                         Row(
