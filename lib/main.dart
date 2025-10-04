@@ -1,51 +1,175 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+// Firebase core + messaging
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+// Local notifications
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+// Screens and theme
 import 'screens/home_screen.dart';
 import 'screens/earnings_screen.dart';
 import 'screens/profile_screen.dart';
-import 'screens/home_screen.dart';
 import 'screens/delivery_history_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'widgets/models/auth_gate.dart';
-import 'package:geolocator_android/geolocator_android.dart';
-import 'package:geolocator_apple/geolocator_apple.dart';
 
-void _registerPlatformLocationServices() {
-  if (Platform.isAndroid) {
-    GeolocatorAndroid.registerWith();
-  } else if (Platform.isIOS) {
-    GeolocatorApple.registerWith();
+// Firebase options
+import 'firebase_options.dart';
+
+// Auth gate and assignment offer
+import 'widgets/models/auth_gate.dart';
+import 'utils/AssignmentOffer.dart';
+
+// Global navigatorKey so taps from system notifications can navigate without BuildContext
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// Local notifications plugin and Android channel
+final FlutterLocalNotificationsPlugin _flnp = FlutterLocalNotificationsPlugin();
+
+const AndroidNotificationChannel _assignChannel = AndroidNotificationChannel(
+  'rider-assignment',
+  'Rider Assignment',
+  description: 'Heads-up assignment requests',
+  importance: Importance.high,
+);
+
+// Race-safe initializer that tolerates hot-restart overlap
+Future<FirebaseApp> ensureFirebaseInitialized() async {
+  if (Firebase.apps.isNotEmpty) {
+    return Firebase.app();
+  }
+  try {
+    return await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } on FirebaseException catch (e) {
+    if (e.code == 'duplicate-app') {
+      return Firebase.app();
+    }
+    rethrow;
   }
 }
 
-void main() async {
-  _registerPlatformLocationServices();
-  WidgetsFlutterBinding.ensureInitialized();
+// Background handler for FCM (must be a top-level function)
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await ensureFirebaseInitialized();
+  // Do minimal, isolate-safe work here (avoid navigation/UI in background isolate)
+}
 
-  try {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
+Future<void> _initLocalNotifications() async {
+  const initSettings = InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(),
+  );
+
+  await _flnp.initialize(
+    initSettings,
+    onDidReceiveNotificationResponse: (resp) {
+      final payload = resp.payload;
+      if (payload != null && payload.isNotEmpty) {
+        navigatorKey.currentState?.pushNamed(
+          '/assignment-offer',
+          arguments: payload,
+        );
+      }
+    },
+  );
+
+  final android = _flnp
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  await android?.createNotificationChannel(_assignChannel);
+}
+
+Future<void> _initFirebaseMessaging() async {
+  await FirebaseMessaging.instance.requestPermission();
+
+  await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  // Foreground messages
+  FirebaseMessaging.onMessage.listen((message) async {
+    final data = message.data;
+    if (data['type'] == 'assignment_request' && data['orderId'] != null) {
+      final orderId = data['orderId'] as String;
+      await _flnp.show(
+        orderId.hashCode,
+        message.notification?.title ?? 'New delivery offer',
+        message.notification?.body ??
+            'Tap to review and accept within 30 seconds',
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _assignChannel.id,
+            _assignChannel.name,
+            channelDescription: _assignChannel.description,
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentSound: true,
+          ),
+        ),
+        payload: orderId,
       );
     }
-  } on FirebaseException catch (e) {
-    if (e.code != 'duplicate-app') {
-      rethrow; // Only rethrow if it's a different error
-    }
-    // else: ignore the duplicate-app error safely
-  }
+  });
 
+  // App opened from background by tapping a notification
+  FirebaseMessaging.onMessageOpenedApp.listen((message) {
+    final data = message.data;
+    if (data['type'] == 'assignment_request' && data['orderId'] != null) {
+      navigatorKey.currentState?.pushNamed(
+        '/assignment-offer',
+        arguments: data['orderId'],
+      );
+    }
+  });
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase in the main/UI isolate (race-safe)
+  await ensureFirebaseInitialized();
+
+  // Register the background handler before using messaging features
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Capture initial message before runApp so it can be handled after first frame
+  final initialMessageFuture = FirebaseMessaging.instance.getInitialMessage();
+
+  // Render the first frame immediately
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
       child: const SpeedDeliveryApp(),
     ),
   );
+
+  // Do the heavy setup right after first frame
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await _initLocalNotifications();
+    await _initFirebaseMessaging();
+
+    // Handle app launched from terminated by tapping the FCM
+    final initial = await initialMessageFuture;
+    if (initial != null) {
+      final data = initial.data;
+      if (data['type'] == 'assignment_request' && data['orderId'] != null) {
+        navigatorKey.currentState?.pushNamed(
+          '/assignment-offer',
+          arguments: data['orderId'],
+        );
+      }
+    }
+  });
 }
 
 class SpeedDeliveryApp extends StatelessWidget {
@@ -54,20 +178,28 @@ class SpeedDeliveryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'SpeedDelivery Driver',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode,
       debugShowCheckedModeBanner: false,
       home: const AuthGate(),
+      routes: {
+        '/home': (_) => const HomeScreen(),
+        '/earnings': (_) => const EarningsScreen(),
+        '/profile': (_) => const ProfileScreen(),
+        '/history': (_) => const DeliveryHistoryScreen(),
+      },
     );
   }
 }
 
+
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
+
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
@@ -75,7 +207,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
+  final List<Widget> _screens = const [
     HomeScreen(),
     EarningsScreen(),
     ProfileScreen(),

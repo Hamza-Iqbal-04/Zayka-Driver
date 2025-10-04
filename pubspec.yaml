@@ -25,6 +25,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_local_notifications: ^19.4.0
   audioplayers: ^5.1.0
+  firebase_messaging:
 
 
 dev_dependencies:

@@ -11,6 +11,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:geolocator_android/geolocator_android.dart';
 import 'package:geolocator_apple/geolocator_apple.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+import '../utils/AssignmentOffer.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String? _riderEmail;
   DocumentReference<Map<String, dynamic>>? _riderDocRef;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _assignSub;
 
   // --- Location Monitoring State ---
   StreamSubscription<Position>? _locSub;
@@ -34,9 +38,33 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- Notification & Sound State ---
   final FlutterLocalNotificationsPlugin _notifier = FlutterLocalNotificationsPlugin();
   final AudioPlayer _player = AudioPlayer();
-  StreamSubscription? _assignSub;
   bool _initialSnapshotDone = false;
   final Set<String> _selfAccepted = {};
+
+  // --- Assignment Offer Overlay State ---
+  OverlayEntry? _offerOverlay;
+  final List<String> _offerQueue = [];
+  bool _offerShowing = false;
+
+  void _enqueueOffer(String orderId) {
+    _offerQueue.add(orderId);
+    if (!_offerShowing) _dequeueAndShow();
+  }
+
+  void _dequeueAndShow() {
+    if (_offerQueue.isEmpty || !mounted) return;
+    final orderId = _offerQueue.removeAt(0);
+    _showAssignmentOfferOverlay(orderId);
+  }
+
+  void _removeOfferOverlay() {
+    _offerOverlay?.remove();
+    _offerOverlay = null;
+    _offerShowing = false;
+    // Show next if queued
+    WidgetsBinding.instance.addPostFrameCallback((_) => _dequeueAndShow());
+  }
+
 
   @override
   void initState() {
@@ -231,14 +259,107 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future _loadCurrentRiderInfo() async {
+  void _showAssignmentOfferOverlay(String orderId) {
+    _offerShowing = true;
+    _offerOverlay = OverlayEntry(
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Stack(
+            children: [
+              // Tap‑through dim is intentionally omitted to keep it lightweight
+              Positioned(
+                top: 12,
+                left: 12,
+                right: 12,
+                child: AssignmentOfferBanner(
+                  orderId: orderId,
+                  onAccept: () async {
+                    // Suppress self‑accepted notification BEFORE backend flip
+                    _selfAccepted.add(orderId);
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('rider_assignments')
+                          .doc(orderId)
+                          .set({
+                        'status': 'accepted',
+                        'respondedAt': FieldValue.serverTimestamp(),
+                      }, SetOptions(merge: true));
+                    } finally {
+                      _removeOfferOverlay();
+                    }
+                  },
+                  onReject: () async {
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('rider_assignments')
+                          .doc(orderId)
+                          .set({
+                        'status': 'rejected',
+                        'respondedAt': FieldValue.serverTimestamp(),
+                      }, SetOptions(merge: true));
+                    } finally {
+                      _removeOfferOverlay();
+                    }
+                  },
+                  onTimeout: () async {
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('rider_assignments')
+                          .doc(orderId)
+                          .set({
+                        'status': 'timeout',
+                        'respondedAt': FieldValue.serverTimestamp(),
+                      }, SetOptions(merge: true));
+                    } finally {
+                      _removeOfferOverlay();
+                    }
+                  },
+                  onResolvedExternally: _removeOfferOverlay,
+                  cardColor: theme.cardColor,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    Overlay.of(context).insert(_offerOverlay!);
+  }
+
+
+  Future<void> _loadCurrentRiderInfo() async {
     final User? currentUser = _auth.currentUser;
-    if (currentUser != null && currentUser.email != null) {
-      setState(() {
-        _riderEmail = currentUser.email;
-        _riderDocRef = _firestore.collection('Drivers').doc(_riderEmail);
+    if (currentUser == null || currentUser.email == null) return;
+
+    final email = currentUser.email!;
+    setState(() {
+      _riderEmail = email;
+      _riderDocRef = _firestore.collection('Drivers').doc(email);
+    });
+
+    // Save token outside setState
+    await _saveFcmToken();
+
+    // Only start listeners after state is set
+    _listenForAssignedOrders();
+    _listenForAssignmentOffers();
+  }
+
+
+  Future<void> _saveFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && _riderDocRef != null) {
+        await _riderDocRef!.set({'fcmToken': token}, SetOptions(merge: true));
+      }
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        if (_riderDocRef != null) {
+          await _riderDocRef!.set({'fcmToken': newToken}, SetOptions(merge: true));
+        }
       });
-      _listenForAssignedOrders();
+    } catch (e) {
+      debugPrint('Failed to save token: $e');
     }
   }
 
@@ -257,6 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           final orderId = change.doc.id;
+          // Suppress if this was accepted by the rider from either flow
           if (!_selfAccepted.remove(orderId)) {
             _alertAndSound(change.doc.data() as Map<String, dynamic>, orderId);
           }
@@ -264,6 +386,26 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
   }
+
+
+  void _listenForAssignmentOffers() {
+    if (_riderEmail == null) return;
+    FirebaseFirestore.instance
+        .collection('rider_assignments')
+        .where('riderId', isEqualTo: _riderEmail)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .listen((snap) {
+      for (final change in snap.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final orderId = change.doc.id;
+          // OLD: Navigator.of(context).pushNamed('/assignment-offer', arguments: orderId);
+          _enqueueOffer(orderId); // NEW
+        }
+      }
+    });
+  }
+
 
   Future _alertAndSound(Map<String, dynamic> orderData, String orderId) async {
     final orderLabel = orderData['dailyOrderNumber']?.toString() ?? orderId;
