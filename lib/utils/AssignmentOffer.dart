@@ -8,9 +8,10 @@ import 'package:geolocator/geolocator.dart';
 class AssignmentOfferBanner extends StatefulWidget {
   final String orderId;
   final VoidCallback onResolvedExternally;
-  final Future<void> Function() onAccept;
-  final Future<void> Function() onReject;
-  final Future<void> Function() onTimeout;
+  final Future Function() onAccept;
+  final Future Function() onReject;
+  final Future Function() onTimeout;
+  final int? initialSeconds; // NEW: seed countdown from caller (e.g., overlay/doc)
   final Color? cardColor;
 
   const AssignmentOfferBanner({
@@ -20,6 +21,7 @@ class AssignmentOfferBanner extends StatefulWidget {
     required this.onReject,
     required this.onTimeout,
     required this.onResolvedExternally,
+    this.initialSeconds, // NEW
     this.cardColor,
   });
 
@@ -40,6 +42,9 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
   @override
   void initState() {
     super.initState();
+    // Seed countdown from the caller; fallback to 30 and clamp to sane bounds.
+    final seed = (widget.initialSeconds ?? 30);
+    _secondsLeft = seed > 0 ? seed.clamp(1, 600) : 30;
     _load();
     _startCountdown();
     _watchResolution();
@@ -55,7 +60,8 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
   Future<void> _load() async {
     final snap = await _db.collection('Orders').doc(widget.orderId).get();
     if (!mounted) return;
-    setState(() => _order = snap.data());
+    _order = snap.data();
+    if (mounted) setState(() {});
   }
 
   void _startCountdown() {
@@ -70,7 +76,11 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
   }
 
   void _watchResolution() {
-    _assignSub = _db.collection('rider_assignments').doc(widget.orderId).snapshots().listen((snap) {
+    _assignSub = _db
+        .collection('rider_assignments')
+        .doc(widget.orderId)
+        .snapshots()
+        .listen((snap) {
       if (!snap.exists) return;
       final status = snap.data()?['status'] as String?;
       if (status == 'accepted' || status == 'rejected' || status == 'timeout') {
@@ -79,7 +89,7 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
     });
   }
 
-  Future<void> _safeRun(Future<void> Function() fn) async {
+  Future<void> _safeRun(Future Function() fn) async {
     if (_busy) return;
     _busy = true;
     try {
@@ -109,7 +119,13 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
         decoration: BoxDecoration(
           color: widget.cardColor ?? theme.cardColor,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 8))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -129,12 +145,16 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
               children: [
                 const Icon(Icons.delivery_dining, size: 22),
                 const SizedBox(width: 8),
-                Text('Delivery Offer', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  'Delivery Offer',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
                 const Spacer(),
                 _CountdownPill(seconds: _secondsLeft),
               ],
             ),
             const SizedBox(height: 10),
+
             if (o == null)
               Row(
                 children: [
@@ -170,10 +190,34 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
                     ],
                   ),
                   const SizedBox(height: 6),
+
+                  Builder(builder: (context) {
+                    final addr = (o['deliveryAddress'] as Map<String, dynamic>?) ?? const {};
+                    final street = (addr['street'] as String?)?.trim() ?? '';
+                    final streetToShow = street.isNotEmpty ? street : 'Street not specified';
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.home, size: 18),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            streetToShow,
+                            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+
+                  const SizedBox(height: 6),
+
                   FutureBuilder<double?>(
                     future: _distanceMeters(),
                     builder: (context, snap) {
-                      final txt = !snap.hasData ? 'Calculating distance...' : 'Approx. ${(snap.data! / 1000).toStringAsFixed(1)} km';
+                      final txt = !snap.hasData
+                          ? 'Calculating distance...'
+                          : 'Approx. ${(snap.data! / 1000).toStringAsFixed(1)} km';
                       return Row(
                         children: [
                           const Icon(Icons.route, size: 18),
@@ -186,6 +230,7 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
                 ],
               ),
             const SizedBox(height: 12),
+
             Row(
               children: [
                 Expanded(
@@ -229,18 +274,25 @@ class _CountdownPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = seconds <= 10 ? Colors.red : (seconds <= 20 ? Colors.orange : Colors.blue);
+    final color = seconds <= 10
+        ? Colors.red
+        : (seconds <= 20 ? Colors.orange : Colors.blue);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.timer, size: 16, color: color),
           const SizedBox(width: 6),
-          Text('$seconds s', style: TextStyle(fontWeight: FontWeight.w700, color: color)),
+          Text('$seconds s',
+              style: TextStyle(fontWeight: FontWeight.w700, color: color)),
         ],
       ),
     );
   }
 }
+

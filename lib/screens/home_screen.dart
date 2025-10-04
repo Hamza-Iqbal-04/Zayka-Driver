@@ -259,72 +259,125 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _showAssignmentOfferOverlay(String orderId) {
+
+
+  Future<void> _showAssignmentOfferOverlay(String orderId) async {
+    if (!mounted) return;
+
+    // Ensure we don't show duplicates
+    if (_offerShowing) return;
     _offerShowing = true;
-    _offerOverlay = OverlayEntry(
-      builder: (context) {
-        final theme = Theme.of(context);
-        return SafeArea(
-          child: Stack(
-            children: [
-              // Tap‑through dim is intentionally omitted to keep it lightweight
-              Positioned(
-                top: 12,
-                left: 12,
-                right: 12,
-                child: AssignmentOfferBanner(
-                  orderId: orderId,
-                  onAccept: () async {
-                    // Suppress self‑accepted notification BEFORE backend flip
-                    _selfAccepted.add(orderId);
-                    try {
-                      await FirebaseFirestore.instance
-                          .collection('rider_assignments')
-                          .doc(orderId)
-                          .set({
-                        'status': 'accepted',
-                        'respondedAt': FieldValue.serverTimestamp(),
-                      }, SetOptions(merge: true));
-                    } finally {
-                      _removeOfferOverlay();
-                    }
-                  },
-                  onReject: () async {
-                    try {
-                      await FirebaseFirestore.instance
-                          .collection('rider_assignments')
-                          .doc(orderId)
-                          .set({
-                        'status': 'rejected',
-                        'respondedAt': FieldValue.serverTimestamp(),
-                      }, SetOptions(merge: true));
-                    } finally {
-                      _removeOfferOverlay();
-                    }
-                  },
-                  onTimeout: () async {
-                    try {
-                      await FirebaseFirestore.instance
-                          .collection('rider_assignments')
-                          .doc(orderId)
-                          .set({
-                        'status': 'timeout',
-                        'respondedAt': FieldValue.serverTimestamp(),
-                      }, SetOptions(merge: true));
-                    } finally {
-                      _removeOfferOverlay();
-                    }
-                  },
-                  onResolvedExternally: _removeOfferOverlay,
-                  cardColor: theme.cardColor,
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('rider_assignments')
+          .doc(orderId);
+      final snap = await docRef.get();
+
+      if (!snap.exists) {
+        // Offer gone, skip.
+        _offerShowing = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _dequeueAndShow());
+        return;
+      }
+
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final status = (data['status'] as String?) ?? 'pending';
+      if (status != 'pending') {
+        // Already resolved externally, skip.
+        _offerShowing = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _dequeueAndShow());
+        return;
+      }
+
+      // Compute initial countdown seconds:
+      int initialSeconds = 30;
+      final tsVal = data['timeoutSeconds'];
+      if (tsVal is int && tsVal > 0) {
+        initialSeconds = tsVal;
+      }
+      final expiresAt = data['expiresAt'];
+      if (expiresAt is Timestamp) {
+        final remaining = expiresAt.toDate().difference(DateTime.now()).inSeconds;
+        if (remaining > 0) {
+          // Clamp to a reasonable window in case of clock skew
+          initialSeconds = remaining.clamp(1, 600);
+        } else {
+          // Already expired; mark timeout and skip UI
+          await docRef.set({
+            'status': 'timeout',
+            'respondedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          _offerShowing = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _dequeueAndShow());
+          return;
+        }
+      }
+
+      _offerOverlay = OverlayEntry(
+        builder: (context) {
+          final theme = Theme.of(context);
+          return SafeArea(
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  right: 12,
+                  child: AssignmentOfferBanner(
+                    orderId: orderId,
+                    // Add this optional param to AssignmentOfferBanner to honor admin-configured timeouts.
+                    initialSeconds: initialSeconds,
+                    onAccept: () async {
+                      // Suppress post-accept assignment alert locally.
+                      _selfAccepted.add(orderId);
+                      try {
+                        await docRef.set({
+                          'status': 'accepted',
+                          'respondedAt': FieldValue.serverTimestamp(),
+                        }, SetOptions(merge: true));
+                      } finally {
+                        _removeOfferOverlay();
+                      }
+                    },
+                    onReject: () async {
+                      try {
+                        await docRef.set({
+                          'status': 'rejected',
+                          'respondedAt': FieldValue.serverTimestamp(),
+                        }, SetOptions(merge: true));
+                      } finally {
+                        _removeOfferOverlay();
+                      }
+                    },
+                    onTimeout: () async {
+                      try {
+                        await docRef.set({
+                          'status': 'timeout',
+                          'respondedAt': FieldValue.serverTimestamp(),
+                        }, SetOptions(merge: true));
+                      } finally {
+                        _removeOfferOverlay();
+                      }
+                    },
+                    // Banner should invoke this when it detects status != 'pending' or doc deletion.
+                    onResolvedExternally: _removeOfferOverlay,
+                    cardColor: theme.cardColor,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    Overlay.of(context).insert(_offerOverlay!);
+              ],
+            ),
+          );
+        },
+      );
+
+      Overlay.of(context).insert(_offerOverlay!);
+    } catch (e) {
+      // Fail-safe: do not block the queue on error.
+      debugPrint('Failed to show assignment offer overlay for $orderId: $e');
+      _offerShowing = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _dequeueAndShow());
+    }
   }
 
 
@@ -783,42 +836,82 @@ class _HomeScreenState extends State<HomeScreen> {
   /* -------------------------------------------------------------------------
    * Order actions
    * ---------------------------------------------------------------------- */
-  Future _acceptOrder(String orderDocId) async {
+  Future<void> _acceptOrder(String orderDocId) async {
     if (_riderEmail == null) return;
+
     try {
       await _firestore.runTransaction((tx) async {
         final ref = _firestore.collection('Orders').doc(orderDocId);
         final snap = await tx.get(ref);
-        if (snap.exists && snap.data()?['riderId'] == "" &&
-            snap.data()?['status'] == 'prepared') {
+
+        if (!snap.exists) {
+          throw Exception("Order not found.");
+        }
+
+        final data = snap.data() as Map<String, dynamic>? ?? {};
+        final String riderId = (data['riderId'] as String?) ?? "";
+        final String status = (data['status'] as String?) ?? "";
+        final bool assignmentPending = (data['assignmentPending'] as bool?) == true;
+
+        // Only allow self-accept when it's still available and not under active auto-assign.
+        if (riderId.isEmpty && status == 'prepared' && !assignmentPending) {
           tx.update(ref, {
             'riderId': _riderEmail,
             'status': 'rider_assigned',
             'timestamps.accepted': FieldValue.serverTimestamp(),
           });
         } else {
-          throw Exception("Order already taken or not available.");
+          throw Exception("Order already taken or being assigned.");
         }
       });
+
+      // Mark as self-accepted to suppress duplicate assignment notifications.
       _selfAccepted.add(orderDocId);
+
+      // Sync driver document: mark busy and store assigned order id.
+      if (_riderDocRef != null) {
+        await _riderDocRef!.set(
+          {
+            'assignedOrderId': orderDocId,
+            'isAvailable': false,
+          },
+          SetOptions(merge: true),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Error: ${e.toString()}")));
+          SnackBar(content: Text("Error: ${e.toString()}")),
+        );
       }
     }
   }
 
-  Future _updateOrderStatus(String orderDocId, String newStatus) async {
-    await _firestore.collection('Orders').doc(orderDocId).update({
-      'status': newStatus,
-      'timestamps.$newStatus': FieldValue.serverTimestamp(),
-    });
-    if (newStatus == 'delivered') {
-      // When an order is delivered, stop the monitor.
-      _stopArrivalMonitor();
-      if (_riderDocRef != null) {
-        await _riderDocRef!.update({'isAvailable': true});
+  Future<void> _updateOrderStatus(String orderDocId, String newStatus) async {
+    try {
+      await _firestore.collection('Orders').doc(orderDocId).update({
+        'status': newStatus,
+        'timestamps.$newStatus': FieldValue.serverTimestamp(),
+      });
+
+      // Stop arrival monitor when delivered and reset driver availability + assignment.
+      if (newStatus == 'delivered') {
+        await _stopArrivalMonitor();
+        if (_riderDocRef != null) {
+          await _riderDocRef!.set(
+            {
+              'isAvailable': true,
+              'assignedOrderId': '',
+            },
+            SetOptions(merge: true),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${e.toString()}")),
+        );
       }
     }
   }
