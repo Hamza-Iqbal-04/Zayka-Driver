@@ -291,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       // Compute initial countdown seconds:
-      int initialSeconds = 30;
+      int initialSeconds = 120;
       final tsVal = data['timeoutSeconds'];
       if (tsVal is int && tsVal > 0) {
         initialSeconds = tsVal;
@@ -336,6 +336,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           'status': 'accepted',
                           'respondedAt': FieldValue.serverTimestamp(),
                         }, SetOptions(merge: true));
+
+                        // ADD THIS: Immediately refresh the current delivery section
+                        if (mounted) {
+                          setState(() {
+                            // Force UI refresh
+                          });
+                        }
                       } finally {
                         _removeOfferOverlay();
                       }
@@ -452,8 +459,30 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
           final orderId = change.doc.id;
-          // OLD: Navigator.of(context).pushNamed('/assignment-offer', arguments: orderId);
-          _enqueueOffer(orderId); // NEW
+          _enqueueOffer(orderId);
+        }
+      }
+    });
+
+    // ADD THIS: Listen for assignment completion to refresh the current delivery
+    FirebaseFirestore.instance
+        .collection('rider_assignments')
+        .where('riderId', isEqualTo: _riderEmail)
+        .where('status', isEqualTo: 'accepted')
+        .snapshots()
+        .listen((snap) {
+      for (final change in snap.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final orderId = change.doc.id;
+          print('🎯 Assignment accepted for order $orderId - refreshing streams');
+
+          // Mark as self-accepted to suppress duplicate notifications
+          _selfAccepted.add(orderId);
+
+          // Force refresh the assigned orders stream by updating the query
+          setState(() {
+            // This will trigger a rebuild of the StreamBuilder
+          });
         }
       }
     });
