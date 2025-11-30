@@ -13,6 +13,7 @@ import 'package:myapp/theme/app_theme.dart';
 import 'package:myapp/widgets/delivery_card.dart';
 import 'package:myapp/widgets/order_details_modal.dart';
 import '../utils/AssignmentOffer.dart';
+import 'package:permission_handler/permission_handler.dart'; // Add this
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -92,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _initLocalNotifications();
     _loadCurrentRiderInfo();
+    _checkBatteryOptimizations();
   }
 
   @override
@@ -170,6 +172,15 @@ class _HomeScreenState extends State<HomeScreen> {
         accuracy: LocationAccuracy.high,
         distanceFilter: distanceFilter,
       );
+    }
+  }
+
+  Future<void> _checkBatteryOptimizations() async {
+    // This permission is critical for receiving notifications when screen is off
+    var status = await Permission.ignoreBatteryOptimizations.status;
+    if (status.isDenied) {
+      // Request the user to disable battery optimizations
+      await Permission.ignoreBatteryOptimizations.request();
     }
   }
 
@@ -596,10 +607,28 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => OrderDetailsSheet(orderData: orderData, orderId: orderId),
+      barrierColor: Colors.black.withOpacity(0.5),
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return OrderDetailsSheet(
+              orderData: orderData,
+              orderId: orderId,
+              scrollController: scrollController,
+            );
+          },
+        );
+      },
     );
   }
+
 
   Future<void> _updateRiderStatus(bool isOnline) async {
     if (_riderDocRef != null) {
@@ -648,7 +677,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.dangerColor,
+                backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),

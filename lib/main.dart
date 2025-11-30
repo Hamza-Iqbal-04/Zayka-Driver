@@ -84,50 +84,80 @@ Future<void> _initLocalNotifications() async {
   await android?.createNotificationChannel(_assignChannel);
 }
 
-Future<void> _initFirebaseMessaging() async {
-  await FirebaseMessaging.instance.requestPermission();
+// 1. Add this helper function to handle navigation logic centrally
+void _handleMessage(RemoteMessage message) {
+  final data = message.data;
 
+  // Check for 'assignment_request' type which matches your Cloud Function payload
+  if (data['type'] == 'assignment_request' && data['orderId'] != null) {
+
+    // Use a small delay to ensure the navigator is mounted and ready
+    Future.delayed(const Duration(milliseconds: 200), () {
+      navigatorKey.currentState?.pushNamed(
+        '/assignment-offer',
+        arguments: data['orderId'],
+      );
+    });
+  }
+}
+
+// 2. Replace your existing _initFirebaseMessaging with this updated version
+Future<void> _initFirebaseMessaging() async {
+  // Request permissions
+  await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+    provisional: false,
+  );
+
+  // Configure options for iOS foreground presentation
   await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
     alert: true,
     badge: true,
     sound: true,
   );
 
-  // Foreground messages
+  // --- CRITICAL FIX FOR KILLED APPS ---
+  // Check if the app was opened from a terminated state by a notification
+  final RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  if (initialMessage != null) {
+    _handleMessage(initialMessage);
+  }
+
+  // --- HANDLE BACKGROUND TAPS ---
+  // Listen for when the app is opened from the background
+  FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+
+  // --- HANDLE FOREGROUND MESSAGES ---
+  // When the app is already open, show a local notification banner
   FirebaseMessaging.onMessage.listen((message) async {
     final data = message.data;
+
     if (data['type'] == 'assignment_request' && data['orderId'] != null) {
       final orderId = data['orderId'] as String;
+
       await _flnp.show(
         orderId.hashCode,
         message.notification?.title ?? 'New delivery offer',
-        message.notification?.body ??
-            'Tap to review and accept within 30 seconds',
+        message.notification?.body ?? 'Tap to review and accept within 2 minutes',
         NotificationDetails(
           android: AndroidNotificationDetails(
             _assignChannel.id,
             _assignChannel.name,
             channelDescription: _assignChannel.description,
-            importance: Importance.high,
+            importance: Importance.max, // Maximum importance for heads-up display
             priority: Priority.high,
+            // Ensure this sound file exists in android/app/src/main/res/raw/
+            sound: const RawResourceAndroidNotificationSound('new_order'),
           ),
           iOS: const DarwinNotificationDetails(
             presentAlert: true,
             presentSound: true,
+            sound: 'new_order.aiff', // Ensure this file is in your iOS assets
           ),
         ),
         payload: orderId,
-      );
-    }
-  });
-
-  // App opened from background by tapping a notification
-  FirebaseMessaging.onMessageOpenedApp.listen((message) {
-    final data = message.data;
-    if (data['type'] == 'assignment_request' && data['orderId'] != null) {
-      navigatorKey.currentState?.pushNamed(
-        '/assignment-offer',
-        arguments: data['orderId'],
       );
     }
   });
