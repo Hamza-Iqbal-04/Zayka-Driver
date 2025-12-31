@@ -154,6 +154,12 @@ class _AssignmentOfferBannerState extends State<AssignmentOfferBanner> {
   Future<void> _safeRun(Future Function() fn) async {
     if (_busy || !mounted) return;
     setState(() => _busy = true);
+
+    // FIX: Cancel the listener immediately when user takes action
+    // This prevents the 'watchResolution' from firing while we process the rejection
+    await _assignSub?.cancel();
+    _assignSub = null;
+
     try {
       await fn();
     } finally {

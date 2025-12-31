@@ -72,7 +72,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _dequeueAndShow() {
+    // FIX: Add this check. If an offer is already showing, don't pop the next one!
+    if (_offerShowing) return;
+
     if (_offerQueue.isEmpty || !mounted) return;
+
     final item = _offerQueue.removeAt(0);
     final assignmentId = item['assignmentId']!;
     final orderId = item['orderId']!;
@@ -80,9 +84,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _removeOfferOverlay() {
+    // FIX: Prevent double-execution.
+    // If overlay is already gone (null) and flag is false, stop here.
+    if (_offerOverlay == null && !_offerShowing) return;
+
     _offerOverlay?.remove();
     _offerOverlay = null;
     _offerShowing = false;
+
+    // This will trigger the next item safely
     WidgetsBinding.instance.addPostFrameCallback((_) => _dequeueAndShow());
   }
 
@@ -345,18 +355,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     onAccept: () async {
                       _selfAccepted.add(orderId);
                       try {
-                        // Branch guard on accept
+                        // 1. Branch Check (Keep your existing safety check)
                         final orderSnap = await _firestore.collection('Orders').doc(orderId).get();
                         final orderBranches = orderSnap.data()?['branchIds'] as List<dynamic>?;
 
-                        // Ensure local rider branches are available
                         List<String> riderBranches = _riderBranchIds.toList();
                         if (riderBranches.isEmpty && _riderDocRef != null) {
                           final riderSnap = await _riderDocRef!.get();
                           riderBranches = (riderSnap.data()?['branchIds'] as List?)
                               ?.map((e) => e.toString())
-                              .toList() ??
-                              [];
+                              .toList() ?? [];
                         }
 
                         if (!_orderMatchesBranches(orderBranches, riderBranches)) {
@@ -372,16 +380,40 @@ class _HomeScreenState extends State<HomeScreen> {
                           return;
                         }
 
-                        await docRef.set({
-                          'status': 'accepted',
-                          'respondedAt': FieldValue.serverTimestamp(),
-                        }, SetOptions(merge: true));
+                        // 2. THE FIX: Update BOTH Assignment and Order immediately
+                        await _firestore.runTransaction((transaction) async {
+                          // A) Mark the assignment offer as accepted
+                          transaction.set(docRef, {
+                            'status': 'accepted',
+                            'respondedAt': FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
+
+                          // B) Claim the order in the 'Orders' collection IMMEDIATELY
+                          // This triggers the "Current Order" stream instantly
+                          final orderRef = _firestore.collection('Orders').doc(orderId);
+                          transaction.update(orderRef, {
+                            'riderId': _riderEmail,           // Assign to self
+                            'status': 'rider_assigned',       // Update status
+                            'timestamps.accepted': FieldValue.serverTimestamp(),
+                          });
+                        });
+
+                        // 3. Update Rider Availability (Optional but good for consistency)
+                        if (_riderDocRef != null) {
+                          _riderDocRef!.update({
+                            'assignedOrderId': orderId,
+                            'isAvailable': false,
+                          });
+                        }
 
                         if (mounted) setState(() {});
+                      } catch (e) {
+                        debugPrint("Error accepting offer: $e");
                       } finally {
                         _removeOfferOverlay();
                       }
                     },
+
                     onReject: () async {
                       try {
                         await docRef.set({
@@ -596,10 +628,28 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => OrderDetailsSheet(orderData: orderData, orderId: orderId),
+      barrierColor: Colors.black.withOpacity(0.5),
+      isDismissible: true,
+      enableDrag: true,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return OrderDetailsSheet(
+              orderData: orderData,
+              orderId: orderId,
+              scrollController: scrollController,
+            );
+          },
+        );
+      },
     );
   }
+
 
   Future<void> _updateRiderStatus(bool isOnline) async {
     if (_riderDocRef != null) {
@@ -648,7 +698,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.dangerColor,
+                backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -799,7 +849,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .collection('Orders')
           .where('riderId', isEqualTo: _riderEmail)
           .where('status', whereNotIn: ['delivered', 'cancelled'])
-          .limit(1)
+      // REMOVE .limit(1) - We need to see all of them to decide which comes first
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -816,7 +866,38 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        final orderDoc = snapshot.data!.docs.first;
+        // --- NEW QUEUE LOGIC START ---
+        final docs = snapshot.data!.docs;
+
+        // Sort orders: Priority to 'picked up' or 'on way', then by time
+        // This ensures the order you are currently moving stays on screen
+        docs.sort((a, b) {
+          final sA = (a.data()['status'] ?? '').toString().toLowerCase();
+          final sB = (b.data()['status'] ?? '').toString().toLowerCase();
+
+          // Helper to score status (Higher number = Higher priority to show)
+          int score(String s) {
+            if (s == 'picked up') return 3;
+            if (s == 'arrived_at_pickup') return 2;
+            return 1; // 'accepted', 'rider_assigned', etc.
+          }
+
+          final scoreA = score(sA);
+          final scoreB = score(sB);
+
+          // If one is picked up and the other isn't, show the picked up one
+          if (scoreA != scoreB) return scoreB.compareTo(scoreA);
+
+          // Otherwise, First In First Out (Show the older order)
+          // We assume document ID or creation time.
+          // Ideally use a timestamp field if available, but doc ID is a simplified fallback
+          return a.id.compareTo(b.id);
+        });
+
+        // The first order in the sorted list is your "Current" order
+        final orderDoc = docs.first;
+        // --- NEW QUEUE LOGIC END ---
+
         final orderData = orderDoc.data();
         _startArrivalMonitor(orderData, orderDoc.id);
 

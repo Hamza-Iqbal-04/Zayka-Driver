@@ -1,3 +1,5 @@
+// lib/screens/earnings_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,16 +28,19 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   // Weekly Performance Chart data
   List<double> _weeklyHeights = List.filled(7, 0.0);
-  final List<String> _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  double _maxWeeklyEarnings = 0.0; // Declared as a class member here
+
+  // UPDATED: Week starts on Sunday
+  final List<String> _days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  double _maxWeeklyEarnings = 0.0;
 
   // Recent Transactions data for pagination
   List<Map<String, dynamic>> _recentTransactions = [];
   final ScrollController _scrollController = ScrollController();
-  DocumentSnapshot? _lastDocument; // Last document from the previous fetch
-  bool _hasMoreTransactions = true; // True if there are more transactions to load
-  bool _isFetchingMoreTransactions = false; // To prevent multiple simultaneous fetches
-  final int _transactionsPageSize = 10; // Number of transactions to fetch per page
+  DocumentSnapshot? _lastDocument;
+  bool _hasMoreTransactions = true;
+  bool _isFetchingMoreTransactions = false;
+  final int _transactionsPageSize = 10;
 
   @override
   void initState() {
@@ -53,7 +58,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
 
   void _onScroll() {
     if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
-      // User has scrolled to the end
       if (_hasMoreTransactions && !_isFetchingMoreTransactions) {
         _fetchMoreTransactions();
       }
@@ -64,8 +68,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
     User? currentUser = _auth.currentUser;
     if (currentUser != null && currentUser.email != null) {
       _riderEmail = currentUser.email;
-      await _fetchSummaryAndWeeklyData(); // Fetch summary and weekly data first
-      await _fetchFirstPageTransactions(); // Then fetch the first page of transactions
+      await _fetchSummaryAndWeeklyData();
+      await _fetchFirstPageTransactions();
     } else {
       setState(() {
         _isLoading = false;
@@ -78,7 +82,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     if (_riderEmail == null) return;
 
     setState(() {
-      _isLoading = true; // Show loading for initial fetch
+      _isLoading = true;
       _errorMessage = null;
     });
 
@@ -86,15 +90,19 @@ class _EarningsScreenState extends State<EarningsScreen> {
       DateTime now = DateTime.now();
       DateTime todayStart = DateTime(now.year, now.month, now.day);
       DateTime todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
-      int currentDayOfWeek = now.weekday;
-      DateTime startOfWeek = todayStart.subtract(Duration(days: currentDayOfWeek - 1));
+
+      int currentDayOfWeek = now.weekday; // 1=Mon ... 7=Sun
+
+      // UPDATED: Calculate start of week (Sunday)
+      // If today is Sunday (7), 7 % 7 = 0 days ago.
+      // If today is Monday (1), 1 % 7 = 1 day ago.
+      DateTime startOfWeek = todayStart.subtract(Duration(days: currentDayOfWeek % 7));
       DateTime endOfWeek = startOfWeek.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
 
       final QuerySnapshot deliveredOrdersSnapshot = await _firestore
           .collection('Orders')
           .where('riderId', isEqualTo: _riderEmail)
           .where('status', isEqualTo: 'delivered')
-      // No limit here as we need all for aggregation within the week
           .get();
 
       double tempTodayEarnings = 0.0;
@@ -106,7 +114,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
       for (var doc in deliveredOrdersSnapshot.docs) {
         final orderData = doc.data() as Map<String, dynamic>;
 
-        // Updated payment extraction
         dynamic paymentValue = orderData['riderPaymentAmount'];
         double payment = 0.0;
         if (paymentValue != null) {
@@ -133,13 +140,14 @@ class _EarningsScreenState extends State<EarningsScreen> {
           if (deliveredDate.isAfter(startOfWeek.subtract(const Duration(seconds: 1))) && deliveredDate.isBefore(endOfWeek.add(const Duration(seconds: 1)))) {
             tempWeekEarnings += payment;
             tempWeekDeliveries++;
-            int dayIndex = deliveredDate.weekday - 1;
+
+            // UPDATED: Map weekday to 0-6 index where Sunday=0
+            int dayIndex = deliveredDate.weekday % 7;
             tempWeeklyHeights[dayIndex] += payment;
           }
         }
       }
 
-      // Assign to class member _maxWeeklyEarnings
       _maxWeeklyEarnings = tempWeeklyHeights.reduce((a, b) => a > b ? a : b);
       if (_maxWeeklyEarnings > 0) {
         _weeklyHeights = tempWeeklyHeights.map((e) => (e / _maxWeeklyEarnings) * 90).toList();
@@ -157,9 +165,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
       setState(() {
         _errorMessage = "Failed to load summary data: $e";
       });
-    } finally {
-      // Keep isLoading true until transactions are also fetched, or set false if only summary fails
-      // For now, _fetchFirstPageTransactions will set isLoading to false finally.
     }
   }
 
@@ -167,7 +172,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     if (_riderEmail == null) return;
 
     setState(() {
-      _isLoading = true; // Keep loading for initial data
+      _isLoading = true;
       _errorMessage = null;
     });
 
@@ -192,7 +197,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
       _recentTransactions = firstPageSnapshot.docs.map((doc) {
         final orderData = doc.data() as Map<String, dynamic>;
 
-        // Updated payment extraction
         dynamic paymentValue = orderData['riderPaymentAmount'];
         double payment = 0.0;
         if (paymentValue != null) {
@@ -257,7 +261,6 @@ class _EarningsScreenState extends State<EarningsScreen> {
         final newTransactions = nextPageSnapshot.docs.map((doc) {
           final orderData = doc.data() as Map<String, dynamic>;
 
-          // Updated payment extraction
           dynamic paymentValue = orderData['riderPaymentAmount'];
           double payment = 0.0;
           if (paymentValue != null) {
@@ -304,7 +307,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         : _errorMessage != null
         ? Center(child: Text(_errorMessage!))
         : ListView(
-      controller: _scrollController, // Attach the scroll controller
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       children: [
         // Earnings Summary
@@ -367,8 +370,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    // UPDATED: Show the Sunday date correctly using % 7 logic
                     Text(
-                      "Week of ${DateFormat.MMMEd().format(DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1)))}", // Show start of current week
+                      "Week of ${DateFormat.MMMEd().format(DateTime.now().subtract(Duration(days: DateTime.now().weekday % 7)))}",
                       style: const TextStyle(color: AppTheme.primaryColor),
                     ),
                   ],
@@ -382,7 +386,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Container(
-                          height: _weeklyHeights[index].clamp(5.0, 90.0), // Ensure min height for visibility
+                          height: _weeklyHeights[index].clamp(5.0, 90.0),
                           width: 16,
                           decoration: BoxDecoration(
                             color: AppTheme.primaryColor,
@@ -392,11 +396,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                // Use _maxWeeklyEarnings here
-                                _weeklyHeights[index] > 0 && _maxWeeklyEarnings > 0 ? '${((_weeklyHeights[index] / 90) * _maxWeeklyEarnings).toStringAsFixed(0)}' : '', // Display actual value
+                                _weeklyHeights[index] > 0 && _maxWeeklyEarnings > 0
+                                    ? '${((_weeklyHeights[index] / 90) * _maxWeeklyEarnings).toStringAsFixed(0)}'
+                                    : '',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: _weeklyHeights[index] > 0 ? 10 : 0, // Hide text if height is 0
+                                  fontSize: _weeklyHeights[index] > 0 ? 10 : 0,
                                 ),
                               ),
                             ),
@@ -429,7 +434,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                if (_recentTransactions.isEmpty && !_isLoading && !_isFetchingMoreTransactions) // Only show if genuinely empty after load
+                if (_recentTransactions.isEmpty && !_isLoading && !_isFetchingMoreTransactions)
                   const Center(
                     child: Padding(
                       padding: EdgeInsets.all(16.0),
