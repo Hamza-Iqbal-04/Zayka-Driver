@@ -27,7 +27,7 @@ dependencies:
   audioplayers: ^5.1.0
   firebase_messaging:
   workmanager:
-
+  permission_handler: ^11.3.0
 
 dev_dependencies:
   flutter_test:

@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_provider.dart';
 import 'delivery_history_screen.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -143,6 +144,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: "Send feedback",
                     theme: theme,
                     onTap: () {},
+                  ),
+                  _buildSettingsItem(
+                    icon: Icons.battery_alert_outlined, // Use a relevant icon
+                    title: "Ignore Battery Optimization",
+                    theme: theme,
+                    onTap: () async {
+                      await Permission.ignoreBatteryOptimizations.request();
+                    },
                   ),
                   _buildToggleItem(
                     icon: Icons.brightness_6_outlined,
