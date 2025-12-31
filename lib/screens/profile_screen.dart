@@ -25,24 +25,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _riderProfileFuture = _fetchRiderProfile();
   }
 
+  // FIX: Fetch directly by Document ID (which is the email)
   Future<DocumentSnapshot?> _fetchRiderProfile() async {
-    final email = FirebaseAuth.instance.currentUser?.email;
-    if (email == null) return null;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.email == null) return null;
 
-    final snapshot = await FirebaseFirestore.instance
-        .collection('Drivers') // Collection name is correct
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .get();
+    final email = user.email!;
+    print("Fetching profile for Doc ID: $email"); // Debug print
 
-    return snapshot.docs.isNotEmpty ? snapshot.docs.first : null;
+    try {
+      // Since the Document ID is the email, we access it directly.
+      // This is faster and avoids issues where the 'email' field inside
+      // the document might have different capitalization (e.g. John@ vs john@).
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('Drivers')
+          .doc(email)
+          .get();
+
+      if (docSnapshot.exists) {
+        return docSnapshot;
+      } else {
+        print("Document for $email does not exist in Drivers collection.");
+      }
+    } catch (e) {
+      debugPrint("Error fetching profile: $e");
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final theme = Theme.of(context);
-    const accentColor = Colors.blue; // Or AppTheme.accentColor if you have one
+    const accentColor = Colors.blue;
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: FutureBuilder<DocumentSnapshot?>(
@@ -52,77 +68,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
+          }
+
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return Center(
-              child: Text(
-                "Driver profile not found.",
-                style: TextStyle(color: theme.colorScheme.onBackground),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  "Driver profile not found.\nLogged in as: ${FirebaseAuth.instance.currentUser?.email}",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: theme.colorScheme.onBackground),
+                ),
               ),
             );
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
+
+          // Data Parsing
           final name = data['name'] ?? "No Name";
           final email = data['email'] ?? "no.email@example.com";
-          // Fetch the profile image URL
           final String? profileImageUrl = data['profileImageUrl'] as String?;
 
-          // Safely access nested vehicle data
-          final Map<String, dynamic>? vehicleData = data['vehicle'] as Map<String, dynamic>?;
-          final String vehicleType = vehicleData?['type'] ?? 'N/A';
-          final String vehicleNumber = vehicleData?['number'] ?? 'N/A';
+          // Parsing Phone (Handle Number or String)
+          final String phone = (data['phone'] ?? 'N/A').toString();
+          final String rating = (data['rating'] ?? '0.0').toString();
 
+          // FIX: Parsing Vehicle (Handle Nested Map safely)
+          // Based on your JSON: vehicle is a Map {number: "...", type: "..."}
+          String vehicleType = 'N/A';
+          String vehicleNumber = 'N/A';
+
+          if (data['vehicle'] is Map) {
+            final vMap = data['vehicle'] as Map<String, dynamic>;
+            vehicleType = vMap['type'] ?? 'N/A';
+            vehicleNumber = vMap['number'] ?? 'N/A';
+          }
 
           return ListView(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
             children: [
-              // Pass profileImageUrl to _buildHeader
               _buildHeader(name, email, profileImageUrl, theme),
               const SizedBox(height: 20),
+
               _buildSectionHeader("Account Information", accentColor, theme),
               _buildSettingsList(theme.cardColor, [
                 _buildInfoItem(
                   icon: Icons.star_border,
                   title: "Rating",
-                  value: (data['rating'] ?? '0.0').toString(),
+                  value: rating,
                   theme: theme,
                 ),
                 _buildInfoItem(
                   icon: Icons.phone_outlined,
                   title: "Phone",
-                  value: (data['phone'] ?? 'N/A').toString(), // Ensure phone is treated as string
+                  value: phone,
                   theme: theme,
                 ),
                 _buildInfoItem(
                   icon: Icons.drive_eta_outlined,
                   title: "Vehicle",
-                  value: vehicleType, // Correctly access nested field
+                  value: vehicleType,
                   theme: theme,
                 ),
                 _buildInfoItem(
                   icon: Icons.pin_outlined,
                   title: "License Plate",
-                  value: vehicleNumber, // Correctly access nested field
+                  value: vehicleNumber,
                   theme: theme,
                 ),
               ]),
+
               _buildSectionHeader("Notifications", accentColor, theme),
               _buildSettingsList(theme.cardColor, [
                 _buildToggleItem(
                   icon: Icons.assignment_turned_in_outlined,
                   title: "New Delivery Assignments",
-                  value: true, // Replace with actual value from data if available
+                  value: true,
                   onChanged: (val) {},
                   theme: theme,
                 ),
                 _buildToggleItem(
                   icon: Icons.track_changes_outlined,
                   title: "Status Updates",
-                  value: true, // Replace with actual value from data if available
+                  value: true,
                   onChanged: (val) {},
                   theme: theme,
                 ),
               ]),
+
               _buildSectionHeader("More", accentColor, theme),
               _buildSettingsList(
                 theme.cardColor,
@@ -146,7 +182,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () {},
                   ),
                   _buildSettingsItem(
-                    icon: Icons.battery_alert_outlined, // Use a relevant icon
+                    icon: Icons.battery_alert_outlined,
                     title: "Ignore Battery Optimization",
                     theme: theme,
                     onTap: () async {
@@ -167,7 +203,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     isDestructive: true,
                     onTap: () async {
                       await FirebaseAuth.instance.signOut();
-                      // Optionally navigate to login screen or update UI
                     },
                   ),
                 ],
@@ -179,32 +214,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // --- Widgets ---
+
   Widget _buildHeader(String name, String email, String? profileImageUrl, ThemeData theme) {
-    // Determine the child for CircleAvatar based on profileImageUrl
     Widget avatarChild;
     if (profileImageUrl != null && profileImageUrl.isNotEmpty) {
-      // Using CachedNetworkImage (add dependency: cached_network_image)
-      // This provides caching and better loading/error states.
       avatarChild = ClipOval(
         child: CachedNetworkImage(
           imageUrl: profileImageUrl,
           placeholder: (context, url) => const SizedBox(
-            width: 30, // Smaller indicator inside the avatar space
-            height: 30,
+            width: 30, height: 30,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          errorWidget: (context, url, error) {
-            print('Error loading profile image with CachedNetworkImage: $error');
-            return _buildInitialsAvatar(name); // Fallback to initials
-          },
+          errorWidget: (context, url, error) => _buildInitialsAvatar(name),
           fit: BoxFit.cover,
           width: 60,
           height: 60,
         ),
       );
-
     } else {
-      // Fallback to initials if no profileImageUrl
       avatarChild = _buildInitialsAvatar(name);
     }
 
@@ -222,12 +250,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               CircleAvatar(
                 radius: 30,
                 backgroundColor: profileImageUrl != null && profileImageUrl.isNotEmpty
-                    ? Colors.transparent // Transparent if image is shown
-                    : Colors.blue.shade700, // Background color for initials
+                    ? Colors.transparent
+                    : Colors.blue.shade700,
                 child: avatarChild,
               ),
               const SizedBox(width: 16),
-              Expanded( // Use Expanded to prevent overflow for long names/emails
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -261,10 +289,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   builder: (_) => const EditProfileScreen(),
                 ),
               );
-              // If EditProfileScreen pops with true, it means data was saved, so refresh.
               if (result == true) {
                 setState(() {
-                  _riderProfileFuture = _fetchRiderProfile(); // Re-fetch data
+                  _riderProfileFuture = _fetchRiderProfile();
                 });
               }
             },
@@ -272,18 +299,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "Edit Profile", // Or "Edit Profile"
+                  "Edit Profile",
                   style: TextStyle(
-                    color: Colors.red[400], // Or theme.colorScheme.primary
+                    color: Colors.red[400],
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: Colors.red[400], // Or theme.colorScheme.primary
-                ),
+                Icon(Icons.arrow_forward_ios, size: 14, color: Colors.red[400]),
               ],
             ),
           ),
@@ -292,7 +315,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Helper widget for initials fallback
   Widget _buildInitialsAvatar(String name) {
     return Text(
       name.isNotEmpty ? name[0].toUpperCase() : 'U',
@@ -311,10 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Container(width: 4, height: 20, color: accentColor),
           const SizedBox(width: 8),
-          Text(
-            title,
-            style: theme.textTheme.titleMedium,
-          ),
+          Text(title, style: theme.textTheme.titleMedium),
         ],
       ),
     );
@@ -335,10 +354,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           itemCount: children.length,
           itemBuilder: (context, index) => children[index],
           separatorBuilder: (context, index) => const Divider(
-            height: 1,
-            indent: 16,
-            endIndent: 16,
-            color: Colors.black26, // Consider using theme.dividerColor
+            height: 1, indent: 16, endIndent: 16, color: Colors.black26,
           ),
         ),
       ),
@@ -356,17 +372,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListTile(
       onTap: onTap,
       leading: Icon(icon, color: theme.colorScheme.secondary),
-      title: Text(
-        title,
-        style: TextStyle(color: color, fontWeight: FontWeight.w500),
-      ),
-      trailing: isDestructive
-          ? null
-          : Icon(
-        Icons.arrow_forward_ios,
-        size: 16,
-        color: theme.colorScheme.secondary,
-      ),
+      title: Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w500)),
+      trailing: isDestructive ? null : Icon(Icons.arrow_forward_ios, size: 16, color: theme.colorScheme.secondary),
     );
   }
 
@@ -378,20 +385,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return ListTile(
       leading: Icon(icon, color: theme.colorScheme.secondary),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: theme.colorScheme.onBackground,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      trailing: Text(
-        value,
-        style: TextStyle(
-          color: theme.colorScheme.secondary,
-          fontSize: 14,
-        ),
-      ),
+      title: Text(title, style: TextStyle(color: theme.colorScheme.onBackground, fontWeight: FontWeight.w500)),
+      trailing: Text(value, style: TextStyle(color: theme.colorScheme.secondary, fontSize: 14)),
     );
   }
 
@@ -405,18 +400,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListTile(
       onTap: () => onChanged(!value),
       leading: Icon(icon, color: theme.colorScheme.secondary),
-      title: Text(
-        title,
-        style: TextStyle(
-          color: theme.colorScheme.onBackground,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeColor: AppTheme.primaryColor, // Ensure AppTheme.primaryColor is defined
-      ),
+      title: Text(title, style: TextStyle(color: theme.colorScheme.onBackground, fontWeight: FontWeight.w500)),
+      trailing: Switch(value: value, onChanged: onChanged, activeColor: AppTheme.primaryColor),
     );
   }
 }

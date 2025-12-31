@@ -27,7 +27,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Function to get the FCM token
   Future<String?> _getFcmToken() async {
     await FirebaseMessaging.instance.requestPermission();
     return await FirebaseMessaging.instance.getToken();
@@ -147,7 +146,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // App Logo
                     Container(
                       height: 80,
                       width: 80,
@@ -163,7 +161,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Title
                     const Text(
                       'Welcome Back',
                       textAlign: TextAlign.center,
@@ -176,7 +173,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
 
-                    // Subtitle
                     Text(
                       'Sign in to continue',
                       textAlign: TextAlign.center,
@@ -188,7 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 48),
 
-                    // Error Message
                     if (_error != null)
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -220,7 +215,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(fontSize: 15),
+                      // CHANGED: Added color: Colors.black
+                      style: const TextStyle(fontSize: 15, color: Colors.black),
                       decoration: InputDecoration(
                         labelText: 'Email',
                         labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
@@ -258,7 +254,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
-                      style: const TextStyle(fontSize: 15),
+                      // CHANGED: Added color: Colors.black
+                      style: const TextStyle(fontSize: 15, color: Colors.black),
                       decoration: InputDecoration(
                         labelText: 'Password',
                         labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
@@ -304,7 +301,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 32),
 
-                    // Login Button
                     SizedBox(
                       height: 52,
                       child: ElevatedButton(
@@ -339,7 +335,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // Divider
                     Row(
                       children: [
                         Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
@@ -359,7 +354,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // Google Sign-In Button
                     SizedBox(
                       height: 52,
                       child: OutlinedButton(

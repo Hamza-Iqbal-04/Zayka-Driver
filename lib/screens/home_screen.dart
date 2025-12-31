@@ -634,6 +634,82 @@ class _HomeScreenState extends State<HomeScreen> {
     await _player.play(AssetSource('sounds/new_order.mp3'));
   }
 
+  Future<void> _showCashCollectionDialog({
+    required BuildContext context,
+    required double amount,
+    required VoidCallback onConfirm,
+  }) async {
+    final theme = Theme.of(context);
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: theme.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+          title: Row(
+            children: [
+              const Icon(Icons.money_off, color: Colors.green, size: 28),
+              const SizedBox(width: 10),
+              const Text('Collect Cash'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This is a Cash on Delivery order.'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('Amount to Collect:', style: TextStyle(fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'QR ${amount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Have you received this amount from the customer?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              child: const Text('No, Cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                onConfirm(); // Proceed to complete delivery
+              },
+              child: const Text('Yes, Collected'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   // ------------- UI Helpers -------------
   void _showOrderDetailsSheet(BuildContext context, Map<String, dynamic> orderData, String orderId) {
     showModalBottomSheet(
@@ -649,6 +725,11 @@ class _HomeScreenState extends State<HomeScreen> {
           initialChildSize: 0.5,
           minChildSize: 0.5,
           maxChildSize: 0.9,
+          // FIX: Add snapping to make the sheet feel "snappier" and less jittery
+          snap: true,
+          snapSizes: const [0.5, 0.9],
+          // FIX: expand: false ensures it doesn't try to fill space unnecessarily
+          expand: false,
           builder: (context, scrollController) {
             return OrderDetailsSheet(
               orderData: orderData,
@@ -860,7 +941,6 @@ class _HomeScreenState extends State<HomeScreen> {
           .collection('Orders')
           .where('riderId', isEqualTo: _riderEmail)
           .where('status', whereNotIn: ['delivered', 'cancelled'])
-      // REMOVE .limit(1) - We need to see all of them to decide which comes first
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -877,39 +957,32 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        // --- NEW QUEUE LOGIC START ---
+        // --- QUEUE LOGIC START ---
         final docs = snapshot.data!.docs;
 
-        // Sort orders: Priority to 'picked up' or 'on way', then by time
-        // This ensures the order you are currently moving stays on screen
+        // Sort orders: Priority to 'picked up' (on way), then by time
         docs.sort((a, b) {
           final sA = (a.data()['status'] ?? '').toString().toLowerCase();
           final sB = (b.data()['status'] ?? '').toString().toLowerCase();
 
-          // Helper to score status (Higher number = Higher priority to show)
+          // Helper to score status
           int score(String s) {
             if (s == 'picked up') return 3;
             if (s == 'arrived_at_pickup') return 2;
-            return 1; // 'accepted', 'rider_assigned', etc.
+            return 1;
           }
 
           final scoreA = score(sA);
           final scoreB = score(sB);
 
-          // If one is picked up and the other isn't, show the picked up one
           if (scoreA != scoreB) return scoreB.compareTo(scoreA);
-
-          // Otherwise, First In First Out (Show the older order)
-          // We assume document ID or creation time.
-          // Ideally use a timestamp field if available, but doc ID is a simplified fallback
           return a.id.compareTo(b.id);
         });
 
-        // The first order in the sorted list is your "Current" order
         final orderDoc = docs.first;
-        // --- NEW QUEUE LOGIC END ---
-
         final orderData = orderDoc.data();
+        // --- QUEUE LOGIC END ---
+
         _startArrivalMonitor(orderData, orderDoc.id);
 
         return Padding(
@@ -919,12 +992,27 @@ class _HomeScreenState extends State<HomeScreen> {
             orderId: orderDoc.id,
             statusColor: _getStatusColor(orderData['status']),
             onUpdateStatus: (newStatus) {
-              _showConfirmationDialog(
-                context: context,
-                title: 'Confirm Status Change',
-                content: 'Mark this order as ${newStatus == 'pickedUp' ? 'Picked Up' : 'Delivered'}?',
-                onConfirm: () => _updateOrderStatus(orderDoc.id, newStatus),
-              );
+              // --- COD CHECK START ---
+              final String paymentType = (orderData['paymentType'] ?? '').toString().toLowerCase();
+              final double totalAmount = (orderData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+
+              // If trying to mark Delivered AND it is Cash on Delivery
+              if (newStatus == 'delivered' && paymentType.contains('cash')) {
+                _showCashCollectionDialog(
+                  context: context,
+                  amount: totalAmount,
+                  onConfirm: () => _updateOrderStatus(orderDoc.id, newStatus),
+                );
+              } else {
+                // Normal confirmation for non-COD or Pick Up
+                _showConfirmationDialog(
+                  context: context,
+                  title: 'Confirm Status Change',
+                  content: 'Mark this order as ${newStatus == 'pickedUp' ? 'Picked Up' : 'Delivered'}?',
+                  onConfirm: () => _updateOrderStatus(orderDoc.id, newStatus),
+                );
+              }
+              // --- COD CHECK END ---
             },
             onCardTap: () => _showOrderDetailsSheet(context, orderData, orderDoc.id),
             actionButtonText: orderData['status'] == 'accepted' || orderData['status'] == 'rider_assigned'
