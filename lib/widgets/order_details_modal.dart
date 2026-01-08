@@ -28,7 +28,11 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
   }
 
   // --- Function to show the Order Details bottom sheet ---
-  void _showOrderDetailsSheet(BuildContext context, Map<String, dynamic> orderData, String orderId) {
+  void _showOrderDetailsSheet(
+    BuildContext context,
+    Map<String, dynamic> orderData,
+    String orderId,
+  ) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -77,13 +81,15 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
     try {
       await _riderDocRef!.update({'status': isOnline ? 'online' : 'offline'});
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Status updated to ${isOnline ? "Online" : "Offline"}')),
+        SnackBar(
+          content: Text('Status updated to ${isOnline ? "Online" : "Offline"}'),
+        ),
       );
     } catch (e) {
       print("Error updating rider status: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update status: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update status: $e')));
     }
   }
 
@@ -126,7 +132,9 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
 
           if (riderSnapshot.hasError) {
             print('Rider Stream Error: ${riderSnapshot.error}');
-            return Center(child: Text('Error loading rider data: ${riderSnapshot.error}'));
+            return Center(
+              child: Text('Error loading rider data: ${riderSnapshot.error}'),
+            );
           }
 
           if (!riderSnapshot.hasData || !riderSnapshot.data!.exists) {
@@ -135,7 +143,8 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
 
           final riderData = riderSnapshot.data!.data() as Map;
           final bool isOnline = riderData['status'] == 'online';
-          final String riderName = riderData['name']?.split(' ').first ?? 'Rider';
+          final String riderName =
+              riderData['name']?.split(' ').first ?? 'Rider';
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,14 +154,20 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
               const SizedBox(height: 24),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text('My Current Delivery', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                child: Text(
+                  'My Current Delivery',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                ),
               ),
               const SizedBox(height: 10),
               _buildAssignedOrderStream(),
               const SizedBox(height: 20),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text('Available Orders', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                child: Text(
+                  'Available Orders',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                ),
               ),
               const SizedBox(height: 10),
               if (isOnline)
@@ -160,7 +175,10 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
               else
                 const Expanded(
                   child: Center(
-                    child: Text("You are offline.", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                    child: Text(
+                      "You are offline.",
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
                   ),
                 ),
             ],
@@ -177,8 +195,17 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
       width: double.infinity,
       decoration: BoxDecoration(
         color: theme.cardColor,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
-        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(24), bottomRight: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,8 +214,21 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
           const SizedBox(height: 4),
           Row(
             children: [
-              Text("You are currently ", style: TextStyle(color: theme.colorScheme.secondary, fontSize: 16)),
-              Text(isOnline ? "Online" : "Offline", style: TextStyle(color: isOnline ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                "You are currently ",
+                style: TextStyle(
+                  color: theme.colorScheme.secondary,
+                  fontSize: 16,
+                ),
+              ),
+              Text(
+                isOnline ? "Online" : "Offline",
+                style: TextStyle(
+                  color: isOnline ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
             ],
           ),
         ],
@@ -210,7 +250,12 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text("My Status", style: Theme.of(context).textTheme.titleMedium),
-            Switch(value: isOnline, onChanged: _updateRiderStatus, activeColor: Colors.green, inactiveTrackColor: Colors.grey.shade600),
+            Switch(
+              value: isOnline,
+              onChanged: _updateRiderStatus,
+              activeColor: Colors.green,
+              inactiveTrackColor: Colors.grey.shade600,
+            ),
           ],
         ),
       ),
@@ -219,13 +264,28 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
 
   Widget _buildAssignedOrderStream() {
     return StreamBuilder(
-      stream: _firestore.collection('Orders').where('riderId', isEqualTo: _riderEmail).where('status', whereNotIn: ['delivered', 'cancelled']).limit(1).snapshots(),
+      stream:
+          _firestore
+              .collection('Orders')
+              .where('riderId', isEqualTo: _riderEmail)
+              .where(
+                'status',
+                whereNotIn: [
+                  'delivered',
+                  'cancelled',
+                  'refunded',
+                  'not_refunded',
+                ],
+              )
+              .limit(1)
+              .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No active assigned orders."));
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return const Center(child: Text("No active assigned orders."));
         if (snapshot.hasError) {
           print('Assigned Order Stream Error: ${snapshot.error}');
           return Center(child: Text('Error: ${snapshot.error}'));
@@ -244,7 +304,9 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
             actionButtonText: null,
             nextStatus: null,
             onCardTap: () {
-              print('Tapping DeliveryCard for orderId: ${orderDoc.id}. Opening OrderDetailsModal.');
+              print(
+                'Tapping DeliveryCard for orderId: ${orderDoc.id}. Opening OrderDetailsModal.',
+              );
               _showOrderDetailsSheet(context, orderData, orderDoc.id);
             },
           ),
@@ -255,13 +317,19 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
 
   Widget _buildAvailableOrdersStream() {
     return StreamBuilder(
-      stream: _firestore.collection('Orders').where('status', isEqualTo: 'prepared').where('riderId', isEqualTo: "").snapshots(),
+      stream:
+          _firestore
+              .collection('Orders')
+              .where('status', isEqualTo: 'prepared')
+              .where('riderId', isEqualTo: "")
+              .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("No new orders available."));
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+          return const Center(child: Text("No new orders available."));
         if (snapshot.hasError) {
           print('Available Order Stream Error: ${snapshot.error}');
           return Center(child: Text('Error: ${snapshot.error}'));
@@ -283,7 +351,9 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
               nextStatus: 'accepted',
               isAcceptAction: true,
               onCardTap: () {
-                print('Tapping DeliveryCard for orderId: ${orderDoc.id}. Opening OrderDetailsModal.');
+                print(
+                  'Tapping DeliveryCard for orderId: ${orderDoc.id}. Opening OrderDetailsModal.',
+                );
                 _showOrderDetailsSheet(context, orderData, orderDoc.id);
               },
             );
@@ -296,7 +366,9 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
   Future _acceptOrder(String orderDocId) async {
     if (_riderEmail == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rider not logged in or info not loaded.')),
+        const SnackBar(
+          content: Text('Rider not logged in or info not loaded.'),
+        ),
       );
       return;
     }
@@ -348,7 +420,9 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
         errorMessage = e.toString().replaceFirst('Exception: ', '');
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMessage)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
   }
 
@@ -359,13 +433,17 @@ class _HomeScreenState extends State with TickerProviderStateMixin {
         'timestamps.$newStatus': FieldValue.serverTimestamp(),
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Order marked as $newStatus!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Order marked as $newStatus!')));
     } catch (e) {
       print('Error updating order status: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update status: ${e.toString().split(':')[1].trim()}')),
+        SnackBar(
+          content: Text(
+            'Failed to update status: ${e.toString().split(':')[1].trim()}',
+          ),
+        ),
       );
     }
   }
@@ -397,31 +475,36 @@ class OrderDetailsSheet extends StatelessWidget {
       return;
     }
 
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
 
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not launch $phoneNumber')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not launch $phoneNumber')));
     }
   }
 
-  Future _navigateToDestination(BuildContext context, LatLng destination) async {
+  Future _navigateToDestination(
+    BuildContext context,
+    LatLng destination,
+  ) async {
     try {
       LocationPermission permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Location permission denied. Cannot navigate.")),
+          const SnackBar(
+            content: Text("Location permission denied. Cannot navigate."),
+          ),
         );
         return;
       }
 
-      Position currentPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      Position currentPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
 
       final Uri url = Uri.parse(
         'https://www.google.com/maps/dir/${currentPosition.latitude},${currentPosition.longitude}/${destination.latitude},${destination.longitude}',
@@ -431,12 +514,16 @@ class OrderDetailsSheet extends StatelessWidget {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Could not open Google Maps for navigation.")),
+          const SnackBar(
+            content: Text("Could not open Google Maps for navigation."),
+          ),
         );
       }
     } catch (e) {
       print('Error navigating: $e');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error during navigation: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error during navigation: $e")));
     }
   }
 
@@ -449,7 +536,8 @@ class OrderDetailsSheet extends StatelessWidget {
     final String customerName = orderData['customerName'] ?? 'N/A';
     final String customerPhone = orderData['customerPhone'] ?? 'N/A';
     final String restaurantPhone = orderData['restaurantPhone'] ?? 'N/A';
-    final String specialInstructions = orderData['customerNotes'] ?? 'No special instructions.';
+    final String specialInstructions =
+        orderData['customerNotes'] ?? 'No special instructions.';
 
     // Address construction
     final Map deliveryAddressMap = orderData['deliveryAddress'] ?? {};
@@ -467,10 +555,12 @@ class OrderDetailsSheet extends StatelessWidget {
     if (street.isNotEmpty) addressParts.add(street);
     if (city.isNotEmpty) addressParts.add(city);
     if (zip.isNotEmpty) addressParts.add(zip);
-    final String customerAddress = addressParts.isNotEmpty ? addressParts.join(', ') : 'N/A';
+    final String customerAddress =
+        addressParts.isNotEmpty ? addressParts.join(', ') : 'N/A';
 
     final List orderItems = orderData['items'] ?? [];
-    final double totalAmount = (orderData['totalAmount'] as num?)?.toDouble() ?? 0.0;
+    final double totalAmount =
+        (orderData['totalAmount'] as num?)?.toDouble() ?? 0.0;
 
     // Delivery Time
     DateTime displayTime = DateTime.now();
@@ -487,7 +577,9 @@ class OrderDetailsSheet extends StatelessWidget {
       final GeoPoint geoPoint = deliveryAddressMap['geolocation'];
       destination = LatLng(geoPoint.latitude, geoPoint.longitude);
     } else {
-      print('Warning: geolocation is not a GeoPoint or is missing for map. Using default Doha coordinates.');
+      print(
+        'Warning: geolocation is not a GeoPoint or is missing for map. Using default Doha coordinates.',
+      );
     }
 
     return Container(
@@ -543,7 +635,10 @@ class OrderDetailsSheet extends StatelessWidget {
                       Marker(
                         markerId: const MarkerId('destination'),
                         position: destination,
-                        infoWindow: InfoWindow(title: customerName, snippet: customerAddress),
+                        infoWindow: InfoWindow(
+                          title: customerName,
+                          snippet: customerAddress,
+                        ),
                       ),
                     },
                     zoomControlsEnabled: false,
@@ -568,7 +663,10 @@ class OrderDetailsSheet extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
@@ -632,7 +730,10 @@ class OrderDetailsSheet extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: theme.cardColor,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.withOpacity(0.15), width: 1),
+                  border: Border.all(
+                    color: Colors.grey.withOpacity(0.15),
+                    width: 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.04),
@@ -650,7 +751,8 @@ class OrderDetailsSheet extends StatelessWidget {
                         final index = entry.key;
                         final item = entry.value;
                         String itemNotes = '';
-                        if (item['options'] is List && item['options'].isNotEmpty) {
+                        if (item['options'] is List &&
+                            item['options'].isNotEmpty) {
                           itemNotes += (item['options'] as List)
                               .map((option) => option['name'] ?? '')
                               .where((name) => name.isNotEmpty)
@@ -659,7 +761,8 @@ class OrderDetailsSheet extends StatelessWidget {
 
                         return Column(
                           children: [
-                            if (index > 0) const Divider(height: 20, thickness: 1),
+                            if (index > 0)
+                              const Divider(height: 20, thickness: 1),
                             _modernItemRow(
                               item['name'] ?? 'Unknown Item',
                               itemNotes,
@@ -675,7 +778,11 @@ class OrderDetailsSheet extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.monetization_on_outlined, size: 20, color: theme.primaryColor),
+                            Icon(
+                              Icons.monetization_on_outlined,
+                              size: 20,
+                              color: theme.primaryColor,
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               "Total",
@@ -718,10 +825,7 @@ class OrderDetailsSheet extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      Colors.amber.shade50,
-                      Colors.orange.shade50,
-                    ],
+                    colors: [Colors.amber.shade50, Colors.orange.shade50],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -738,11 +842,17 @@ class OrderDetailsSheet extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline_rounded, color: Colors.amber.shade800, size: 20),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: Colors.amber.shade800,
+                      size: 20,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        specialInstructions.isNotEmpty ? specialInstructions : "No special instructions.",
+                        specialInstructions.isNotEmpty
+                            ? specialInstructions
+                            : "No special instructions.",
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.amber.shade900,
@@ -774,12 +884,17 @@ class OrderDetailsSheet extends StatelessWidget {
                       ),
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.call_outlined, size: 20),
-                        label: const Text("Call", style: TextStyle(fontWeight: FontWeight.w600)),
+                        label: const Text(
+                          "Call",
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         onPressed: () => _makePhoneCall(context, customerPhone),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: theme.primaryColor,
                           side: BorderSide.none,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
                     ),
@@ -790,7 +905,10 @@ class OrderDetailsSheet extends StatelessWidget {
                       height: 50,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [theme.primaryColor, theme.primaryColor.withOpacity(0.8)],
+                          colors: [
+                            theme.primaryColor,
+                            theme.primaryColor.withOpacity(0.8),
+                          ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -805,13 +923,19 @@ class OrderDetailsSheet extends StatelessWidget {
                       ),
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.navigation_outlined, size: 20),
-                        label: const Text("Navigate", style: TextStyle(fontWeight: FontWeight.w600)),
-                        onPressed: () => _navigateToDestination(context, destination),
+                        label: const Text(
+                          "Navigate",
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        onPressed:
+                            () => _navigateToDestination(context, destination),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           foregroundColor: Colors.white,
                           shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
                     ),
@@ -828,12 +952,12 @@ class OrderDetailsSheet extends StatelessWidget {
 
   // Modern Info Card Widget
   Widget _buildModernInfoCard(
-      BuildContext context, {
-        required IconData icon,
-        required String label,
-        required String value,
-        required ThemeData theme,
-      }) {
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+    required ThemeData theme,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -891,7 +1015,12 @@ class OrderDetailsSheet extends StatelessWidget {
   }
 
   // Modern Item Row Widget
-  Widget _modernItemRow(String title, String note, String count, ThemeData theme) {
+  Widget _modernItemRow(
+    String title,
+    String note,
+    String count,
+    ThemeData theme,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,

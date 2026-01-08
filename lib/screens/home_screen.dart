@@ -1044,7 +1044,15 @@ class _HomeScreenState extends State<HomeScreen> {
           _firestore
               .collection('Orders')
               .where('riderId', isEqualTo: _riderEmail)
-              .where('status', whereNotIn: ['delivered', 'cancelled'])
+              .where(
+                'status',
+                whereNotIn: [
+                  'delivered',
+                  'cancelled',
+                  'refunded',
+                  'not_refunded',
+                ],
+              )
               .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
