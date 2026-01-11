@@ -21,7 +21,7 @@ import 'firebase_options.dart';
 
 // Auth gate and assignment offer
 import 'widgets/models/auth_gate.dart';
-import 'utils/AssignmentOffer.dart';
+import 'screens/assignment_offer_screen.dart';
 
 // Global navigatorKey so taps from system notifications can navigate without BuildContext
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -79,8 +79,11 @@ Future<void> _initLocalNotifications() async {
     },
   );
 
-  final android = _flnp
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  final android =
+      _flnp
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
   await android?.createNotificationChannel(_assignChannel);
 }
 
@@ -88,9 +91,10 @@ Future<void> _initLocalNotifications() async {
 void _handleMessage(RemoteMessage message) {
   final data = message.data;
 
-  // Check for 'assignment_request' type which matches your Cloud Function payload
-  if (data['type'] == 'assignment_request' && data['orderId'] != null) {
-
+  // Check for both 'auto_assignment' (from Cloud Functions) and 'assignment_request' for compatibility
+  if ((data['type'] == 'auto_assignment' ||
+          data['type'] == 'assignment_request') &&
+      data['orderId'] != null) {
     // Use a small delay to ensure the navigator is mounted and ready
     Future.delayed(const Duration(milliseconds: 200), () {
       navigatorKey.currentState?.pushNamed(
@@ -120,7 +124,8 @@ Future<void> _initFirebaseMessaging() async {
 
   // --- CRITICAL FIX FOR KILLED APPS ---
   // Check if the app was opened from a terminated state by a notification
-  final RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+  final RemoteMessage? initialMessage =
+      await FirebaseMessaging.instance.getInitialMessage();
   if (initialMessage != null) {
     _handleMessage(initialMessage);
   }
@@ -134,19 +139,23 @@ Future<void> _initFirebaseMessaging() async {
   FirebaseMessaging.onMessage.listen((message) async {
     final data = message.data;
 
-    if (data['type'] == 'assignment_request' && data['orderId'] != null) {
+    if ((data['type'] == 'auto_assignment' ||
+            data['type'] == 'assignment_request') &&
+        data['orderId'] != null) {
       final orderId = data['orderId'] as String;
 
       await _flnp.show(
         orderId.hashCode,
         message.notification?.title ?? 'New delivery offer',
-        message.notification?.body ?? 'Tap to review and accept within 2 minutes',
+        message.notification?.body ??
+            'Tap to review and accept within 2 minutes',
         NotificationDetails(
           android: AndroidNotificationDetails(
             _assignChannel.id,
             _assignChannel.name,
             channelDescription: _assignChannel.description,
-            importance: Importance.max, // Maximum importance for heads-up display
+            importance:
+                Importance.max, // Maximum importance for heads-up display
             priority: Priority.high,
             // Ensure this sound file exists in android/app/src/main/res/raw/
             sound: const RawResourceAndroidNotificationSound('new_order'),
@@ -192,7 +201,9 @@ Future<void> main() async {
     final initial = await initialMessageFuture;
     if (initial != null) {
       final data = initial.data;
-      if (data['type'] == 'assignment_request' && data['orderId'] != null) {
+      if ((data['type'] == 'auto_assignment' ||
+              data['type'] == 'assignment_request') &&
+          data['orderId'] != null) {
         navigatorKey.currentState?.pushNamed(
           '/assignment-offer',
           arguments: data['orderId'],
@@ -221,11 +232,14 @@ class SpeedDeliveryApp extends StatelessWidget {
         '/earnings': (_) => const EarningsScreen(),
         '/profile': (_) => const ProfileScreen(),
         '/history': (_) => const DeliveryHistoryScreen(),
+        '/assignment-offer':
+            (context) => AssignmentOfferScreen(
+              orderId: ModalRoute.of(context)!.settings.arguments as String,
+            ),
       },
     );
   }
 }
-
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
