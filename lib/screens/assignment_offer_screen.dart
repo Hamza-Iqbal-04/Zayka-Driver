@@ -36,8 +36,9 @@ class _AssignmentOfferScreenState extends State<AssignmentOfferScreen> {
   /// Find the active assignment document for this order and driver
   Future<void> _findAssignment() async {
     try {
-      final riderId = _auth.currentUser?.uid;
-      if (riderId == null) {
+      // Use email instead of uid - assignments are stored with email as riderId
+      final riderEmail = _auth.currentUser?.email;
+      if (riderEmail == null) {
         setState(() {
           _error = 'Not logged in';
           _loading = false;
@@ -50,7 +51,7 @@ class _AssignmentOfferScreenState extends State<AssignmentOfferScreen> {
           await _db
               .collection('rider_assignments')
               .where('orderId', isEqualTo: widget.orderId)
-              .where('riderId', isEqualTo: riderId)
+              .where('riderId', isEqualTo: riderEmail)
               .where('status', isEqualTo: 'pending')
               .limit(1)
               .get();
@@ -78,8 +79,9 @@ class _AssignmentOfferScreenState extends State<AssignmentOfferScreen> {
   }
 
   Future<void> _handleAccept() async {
-    final riderId = _auth.currentUser?.uid;
-    if (riderId == null || _assignmentDocId == null) return;
+    // Use email instead of uid for consistency with the rest of the app
+    final riderEmail = _auth.currentUser?.email;
+    if (riderEmail == null || _assignmentDocId == null) return;
 
     await _db.collection('rider_assignments').doc(_assignmentDocId).update({
       'status': 'accepted',
@@ -88,7 +90,7 @@ class _AssignmentOfferScreenState extends State<AssignmentOfferScreen> {
 
     // Update the order with rider assignment
     await _db.collection('Orders').doc(widget.orderId).update({
-      'riderId': riderId,
+      'riderId': riderEmail,
       'riderAssignedAt': FieldValue.serverTimestamp(),
       'orderStatus': 'Rider Assigned',
     });
