@@ -32,30 +32,33 @@ class _LoginScreenState extends State<LoginScreen> {
     return await FirebaseMessaging.instance.getToken();
   }
 
-  Future<void> _createDriverDocument(User user, {String? name, String? phone}) async {
+  Future<void> _createDriverDocument(
+    User user, {
+    String? name,
+    String? phone,
+  }) async {
     final fcmToken = await _getFcmToken();
     if (fcmToken == null) {
-      print("Unable to get FCM token.");
+      debugPrint("Unable to get FCM token.");
       return;
     }
 
     await FirebaseFirestore.instance.collection('Drivers').doc(user.email).set({
       'assignedOrderId': '',
-      'branchIds': ['Mansoura'],
+      'branchIds': [], // Admin should assign branches to new drivers
       'currentLocation': const GeoPoint(25.2680464, 51.5531718),
       'email': user.email,
       'fcmToken': fcmToken,
       'isAvailable': true,
       'name': name ?? user.displayName ?? 'No Name',
       'phone': int.tryParse(phone ?? '0') ?? 0,
-      'profileImageUrl': user.photoURL ?? 'https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSxlch-bkxhhX6iZdWZlcM31h6l7-yLHggS4ncGPPeNbAk6ctXokv3SJi2YGMHQwvCmS8X7P7lNmIi_IS8oGpggedOWPez506AQDcxlCw',
+      'profileImageUrl':
+          user.photoURL ??
+          'https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSxlch-bkxhhX6iZdWZlcM31h6l7-yLHggS4ncGPPeNbAk6ctXokv3SJi2YGMHQwvCmS8X7P7lNmIi_IS8oGpggedOWPez506AQDcxlCw',
       'rating': '4.5',
       'status': 'online',
       'totalDeliveries': 0,
-      'vehicle': {
-        'number': 'GFGG233',
-        'type': 'Car',
-      },
+      'vehicle': {'number': 'GFGG233', 'type': 'Car'},
     });
   }
 
@@ -105,11 +108,17 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: googleAuth.idToken,
       );
 
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
       final user = userCredential.user;
 
       if (user != null) {
-        final userDoc = await FirebaseFirestore.instance.collection('Drivers').doc(user.email).get();
+        final userDoc =
+            await FirebaseFirestore.instance
+                .collection('Drivers')
+                .doc(user.email)
+                .get();
         if (!userDoc.exists) {
           await _createDriverDocument(user);
         }
@@ -195,7 +204,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                            Icon(
+                              Icons.error_outline,
+                              color: Colors.red.shade700,
+                              size: 20,
+                            ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
@@ -219,8 +232,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: const TextStyle(fontSize: 15, color: Colors.black),
                       decoration: InputDecoration(
                         labelText: 'Email',
-                        labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                        prefixIcon: Icon(Icons.email_outlined, color: Colors.grey.shade500, size: 20),
+                        labelStyle: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.email_outlined,
+                          color: Colors.grey.shade500,
+                          size: 20,
+                        ),
                         filled: true,
                         fillColor: Colors.grey.shade50,
                         border: OutlineInputBorder(
@@ -233,16 +253,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryColor,
+                            width: 2,
+                          ),
                         ),
                         errorBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: Colors.red.shade300),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                       ),
                       validator: (value) {
-                        if (value == null || value.trim().isEmpty || !value.contains('@')) {
+                        if (value == null ||
+                            value.trim().isEmpty ||
+                            !value.contains('@')) {
                           return 'Please enter a valid email address.';
                         }
                         return null;
@@ -258,11 +286,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: const TextStyle(fontSize: 15, color: Colors.black),
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        labelStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                        prefixIcon: Icon(Icons.lock_outline, color: Colors.grey.shade500, size: 20),
+                        labelStyle: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.lock_outline,
+                          color: Colors.grey.shade500,
+                          size: 20,
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
                             color: Colors.grey.shade500,
                             size: 20,
                           ),
@@ -284,13 +321,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryColor,
+                            width: 2,
+                          ),
                         ),
                         errorBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: Colors.red.shade300),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().length < 6) {
@@ -314,30 +357,36 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: _isLoading
-                            ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                            : const Text(
-                          'Sign In',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
+                        child:
+                            _isLoading
+                                ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : const Text(
+                                  'Sign In',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
                       ),
                     ),
                     const SizedBox(height: 28),
 
                     Row(
                       children: [
-                        Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                        Expanded(
+                          child: Divider(
+                            color: Colors.grey.shade300,
+                            thickness: 1,
+                          ),
+                        ),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
                           child: Text(
@@ -349,7 +398,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+                        Expanded(
+                          child: Divider(
+                            color: Colors.grey.shade300,
+                            thickness: 1,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 28),
@@ -359,7 +413,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: OutlinedButton(
                         onPressed: _isLoading ? null : _signInWithGoogle,
                         style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                          side: BorderSide(
+                            color: Colors.grey.shade300,
+                            width: 1.5,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),

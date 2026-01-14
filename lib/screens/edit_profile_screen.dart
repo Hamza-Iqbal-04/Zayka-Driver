@@ -79,7 +79,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         // FIX: Convert phone to String explicitly
         _phoneController.text = (_currentRiderData?['phone'] ?? '').toString();
         _currentProfileImageUrl = _currentRiderData?['profileImageUrl'];
-        print("Loaded rider data: $_currentRiderData"); // ADDED PRINT
+        debugPrint("Loaded rider data: $_currentRiderData"); // ADDED PRINT
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Rider profile not found.")),
@@ -87,7 +87,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      print("Error loading rider data: $e");
+      debugPrint("Error loading rider data: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error loading data: ${e.toString()}")),
@@ -108,15 +108,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() {
         _imageFile = File(pickedFile.path);
       });
-      print("Image picked from gallery: ${pickedFile.path}"); // ADDED PRINT
+      debugPrint("Image picked from gallery: ${pickedFile.path}"); // ADDED PRINT
     } else {
-      print("Image picking cancelled."); // ADDED PRINT
+      debugPrint("Image picking cancelled."); // ADDED PRINT
     }
   }
 
   Future<String?> _uploadImage(File imageFile) async {
     if (_auth.currentUser == null) {
-      print("Upload failed: User not logged in."); // ADDED PRINT
+      debugPrint("Upload failed: User not logged in."); // ADDED PRINT
       return null;
     }
 
@@ -129,7 +129,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // String fileName = 'profile_images/${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
 
-    print("Attempting to upload to Firebase Storage path: $fileName"); // ADDED PRINT
+    debugPrint("Attempting to upload to Firebase Storage path: $fileName"); // ADDED PRINT
 
     try {
       Reference storageRef = _storage.ref().child(fileName);
@@ -137,15 +137,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       // You can listen to the upload progress if needed
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        print('Upload progress: ${snapshot.bytesTransferred}/${snapshot.totalBytes}'); // ADDED PRINT
+        debugPrint('Upload progress: ${snapshot.bytesTransferred}/${snapshot.totalBytes}'); // ADDED PRINT
       });
 
       TaskSnapshot snapshot = await uploadTask;
       String downloadUrl = await snapshot.ref.getDownloadURL();
-      print("Image uploaded successfully. Download URL: $downloadUrl"); // ADDED PRINT
+      debugPrint("Image uploaded successfully. Download URL: $downloadUrl"); // ADDED PRINT
       return downloadUrl;
     } catch (e) {
-      print("Error uploading image: $e"); // Existing print
+      debugPrint("Error uploading image: $e"); // Existing print
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Image upload failed: ${e.toString()}")),
@@ -156,7 +156,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) {
-      print("Form validation failed."); // ADDED PRINT
+      debugPrint("Form validation failed."); // ADDED PRINT
       return;
     }
     if (_currentRiderDocumentId == null) {
@@ -164,12 +164,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Error: Rider profile not found.")),
       );
-      print("Save failed: _currentRiderDocumentId is null."); // ADDED PRINT
+      debugPrint("Save failed: _currentRiderDocumentId is null."); // ADDED PRINT
       return;
     }
 
     setState(() => _isSaving = true);
-    print("Starting profile save operation..."); // ADDED PRINT
+    debugPrint("Starting profile save operation..."); // ADDED PRINT
 
 
     Map<String, dynamic> updatedData = {
@@ -179,23 +179,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     String? newImageUrl;
     if (_imageFile != null) {
-      print("New image selected, attempting upload."); // ADDED PRINT
+      debugPrint("New image selected, attempting upload."); // ADDED PRINT
       newImageUrl = await _uploadImage(_imageFile!);
       if (newImageUrl != null) {
         updatedData['profileImageUrl'] = newImageUrl;
-        print("New image URL obtained: $newImageUrl"); // ADDED PRINT
+        debugPrint("New image URL obtained: $newImageUrl"); // ADDED PRINT
       } else {
-        print("Image upload failed, stopping profile save."); // ADDED PRINT
+        debugPrint("Image upload failed, stopping profile save."); // ADDED PRINT
         setState(() => _isSaving = false);
         return; // Stop if image selected but upload failed
       }
     } else {
-      print("No new image selected. Skipping image upload."); // ADDED PRINT
+      debugPrint("No new image selected. Skipping image upload."); // ADDED PRINT
     }
 
 
     try {
-      print("Updating Firestore document: Drivers/$_currentRiderDocumentId with data: $updatedData"); // ADDED PRINT
+      debugPrint("Updating Firestore document: Drivers/$_currentRiderDocumentId with data: $updatedData"); // ADDED PRINT
       await _firestore
           .collection('Drivers')
           .doc(_currentRiderDocumentId)
@@ -207,10 +207,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             content: Text("Profile updated successfully!"),
             backgroundColor: Colors.green),
       );
-      print("Profile updated successfully."); // ADDED PRINT
+      debugPrint("Profile updated successfully."); // ADDED PRINT
       Navigator.of(context).pop(true); // Pop and indicate success
     } catch (e) {
-      print("Error updating profile: $e"); // Existing print
+      debugPrint("Error updating profile: $e"); // Existing print
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error updating profile: ${e.toString()}")),
@@ -218,7 +218,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
-        print("Profile save operation finished."); // ADDED PRINT
+        debugPrint("Profile save operation finished."); // ADDED PRINT
       }
     }
   }

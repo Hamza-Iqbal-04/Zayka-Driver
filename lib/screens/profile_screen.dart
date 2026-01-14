@@ -31,7 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null || user.email == null) return null;
 
     final email = user.email!;
-    print("Fetching profile for Doc ID: $email"); // Debug print
+    debugPrint("Fetching profile for Doc ID: $email"); // Debug print
 
     try {
       // Since the Document ID is the email, we access it directly.
@@ -45,7 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (docSnapshot.exists) {
         return docSnapshot;
       } else {
-        print("Document for $email does not exist in Drivers collection.");
+        debugPrint("Document for $email does not exist in Drivers collection.");
       }
     } catch (e) {
       debugPrint("Error fetching profile: $e");

@@ -29,7 +29,7 @@ class DeliveryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print('DeliveryCard being built for orderId: ${orderData['orderId']}');
+    debugPrint('DeliveryCard being built for orderId: ${orderData['orderId']}');
     final theme = Theme.of(context);
     final customerName = orderData['customerName'] ?? 'Unknown';
 
@@ -42,11 +42,11 @@ class DeliveryCard extends StatelessWidget {
     final city = deliveryAddress['city'] as String? ?? '';
 
     // Debug prints to check values in console (remove after testing)
-    print('Flat: $flat');
-    print('Floor: $floor');
-    print('Building: $building');
-    print('Street: $street');
-    print('City: $city');
+    debugPrint('Flat: $flat');
+    debugPrint('Floor: $floor');
+    debugPrint('Building: $building');
+    debugPrint('Street: $street');
+    debugPrint('City: $city');
 
     // Updated: Build address string in specified order with labels for flat/floor/building, skipping empty parts
     final addressParts = <String>[];

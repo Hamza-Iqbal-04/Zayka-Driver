@@ -430,7 +430,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                             onUpdateStatus: null,
                             actionButtonText: null,
                             nextStatus: null,
-                            onCardTap: () => print("Tapped on order: ${orderData['orderId'] ?? orderData['docId'] ?? 'ID N/A'}"),
+                            onCardTap: () => debugPrint("Tapped on order: ${orderData['orderId'] ?? orderData['docId'] ?? 'ID N/A'}"),
                           ),
                           if (index < _filteredAndProcessedDeliveries.length - 1)
                             const SizedBox(height: 12), // Separator between cards, not after last one
